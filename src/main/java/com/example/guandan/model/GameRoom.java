@@ -32,6 +32,8 @@ public class GameRoom {
         private boolean online;
         private int score;
         
+        public Player() {}
+        
         public Player(Long userId, String username, int seat) {
             this.userId = userId;
             this.username = username;
