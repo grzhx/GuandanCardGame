@@ -46,7 +46,7 @@ public class Card {
         if (number == 5) return 4;
         if (number == 4) return 3;
         if (number == 3) return 2;
-        if (number == 14) return 1; // 2
+        if (number == 14||number == 2) return 1; // 2
         return 0;
     }
 }
