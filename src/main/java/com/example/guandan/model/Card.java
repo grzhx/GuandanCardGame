@@ -1,5 +1,7 @@
 package com.example.guandan.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -7,6 +9,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Card {
     private String color; // Spade, Club, Heart, Diamond, Joker
     private int number; // 1-14 (1=A, 11=J, 12=Q, 13=K, 14=2), 15=BlackJoker, 16=RedJoker
@@ -26,6 +29,7 @@ public class Card {
         return "Heart".equals(color) && number == level;
     }
     
+    @JsonIgnore
     public boolean isJoker() {
         return number >= 15;
     }
