@@ -166,6 +166,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
             broadcastRoomInfo(roomId);
             
             if (roomService.allPlayersReady(roomId)) {
+                room = roomService.getRoom(roomId);
                 room.setFirstPlayer(new Random().nextInt(4));
                 gameService.initGame(room);
                 roomService.saveRoom(room);
@@ -192,6 +193,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
         broadcastRoomInfo(roomId);
         
         if (roomService.allPlayersReady(roomId) && !room.isStarted()) {
+            room = roomService.getRoom(roomId);
             room.setFirstPlayer(new Random().nextInt(4));
             gameService.initGame(room);
             roomService.saveRoom(room);
