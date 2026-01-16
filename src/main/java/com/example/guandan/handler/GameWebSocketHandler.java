@@ -50,11 +50,11 @@ public class GameWebSocketHandler implements WebSocketHandler {
         } else if ("get_cards".equals(action)) {
             handleGetCards(session, msg);
         } else if ("get_last_combo".equals(action)) {
-            handleGetLastCombo(session);
+            handleGetLastCombo(session, msg);
         } else if ("get_turn".equals(action)) {
-            handleGetTurn(session);
+            handleGetTurn(session, msg);
         } else if ("get_history".equals(action)) {
-            handleGetHistory(session);
+            handleGetHistory(session, msg);
         } else if (msg.containsKey("roomId")) {
             handleRoomAction(session, msg);
         } else if (msg.containsKey("state")) {
@@ -65,9 +65,16 @@ public class GameWebSocketHandler implements WebSocketHandler {
     }
     
     private void handleGetCards(WebSocketSession session, Map<String, Object> msg) throws Exception {
-        String roomId = sessionToRoom.get(session.getId());
+        String roomId = (String) msg.get("roomId");
+        if (roomId == null) {
+            roomId = sessionToRoom.get(session.getId());
+        }
         String username = (String) msg.get("username");
-        if (roomId == null) return;
+        if (roomId == null) {
+            log.warn("get_cards: session {} not in any room", session.getId());
+            sendMessage(session, Map.of("error", "Not in a room, please provide roomId"));
+            return;
+        }
         
         GameRoom room = roomService.getRoom(roomId);
         for (int i = 0; i < 4; i++) {
@@ -78,9 +85,16 @@ public class GameWebSocketHandler implements WebSocketHandler {
         }
     }
     
-    private void handleGetLastCombo(WebSocketSession session) throws Exception {
-        String roomId = sessionToRoom.get(session.getId());
-        if (roomId == null) return;
+    private void handleGetLastCombo(WebSocketSession session, Map<String, Object> msg) throws Exception {
+        String roomId = (String) msg.get("roomId");
+        if (roomId == null) {
+            roomId = sessionToRoom.get(session.getId());
+        }
+        if (roomId == null) {
+            log.warn("get_last_combo: session {} not in any room", session.getId());
+            sendMessage(session, Map.of("error", "Not in a room, please provide roomId"));
+            return;
+        }
         
         GameRoom room = roomService.getRoom(roomId);
         Map<String, Object> response = new HashMap<>();
@@ -94,17 +108,31 @@ public class GameWebSocketHandler implements WebSocketHandler {
         sendMessage(session, response);
     }
     
-    private void handleGetTurn(WebSocketSession session) throws Exception {
-        String roomId = sessionToRoom.get(session.getId());
-        if (roomId == null) return;
+    private void handleGetTurn(WebSocketSession session, Map<String, Object> msg) throws Exception {
+        String roomId = (String) msg.get("roomId");
+        if (roomId == null) {
+            roomId = sessionToRoom.get(session.getId());
+        }
+        if (roomId == null) {
+            log.warn("get_turn: session {} not in any room", session.getId());
+            sendMessage(session, Map.of("error", "Not in a room, please provide roomId"));
+            return;
+        }
         
         GameRoom room = roomService.getRoom(roomId);
         sendMessage(session, Map.of("seat", room.getCurrentPlayer()));
     }
     
-    private void handleGetHistory(WebSocketSession session) throws Exception {
-        String roomId = sessionToRoom.get(session.getId());
-        if (roomId == null) return;
+    private void handleGetHistory(WebSocketSession session, Map<String, Object> msg) throws Exception {
+        String roomId = (String) msg.get("roomId");
+        if (roomId == null) {
+            roomId = sessionToRoom.get(session.getId());
+        }
+        if (roomId == null) {
+            log.warn("get_history: session {} not in any room", session.getId());
+            sendMessage(session, Map.of("error", "Not in a room, please provide roomId"));
+            return;
+        }
         
         GameRoom room = roomService.getRoom(roomId);
         String gameKey = "game" + room.getCurrentGameIndex();

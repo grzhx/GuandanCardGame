@@ -470,9 +470,14 @@
 ```json
 {
   "action": "get_cards",
-  "username": "player1"
+  "username": "player1",
+  "roomId": "ABC123"
 }
 ```
+
+**参数说明**:
+- `username`: 玩家用户名（必需）
+- `roomId`: 房间ID（可选，如果session已关联房间则可省略）
 
 **服务器响应**:
 ```json
@@ -490,9 +495,13 @@
 **客户端发送**:
 ```json
 {
-  "action": "get_last_combo"
+  "action": "get_last_combo",
+  "roomId": "ABC123"
 }
 ```
+
+**参数说明**:
+- `roomId`: 房间ID（可选，如果session已关联房间则可省略）
 
 **服务器响应**（有上一次出牌时）:
 ```json
@@ -518,9 +527,13 @@
 **客户端发送**:
 ```json
 {
-  "action": "get_turn"
+  "action": "get_turn",
+  "roomId": "ABC123"
 }
 ```
+
+**参数说明**:
+- `roomId`: 房间ID（可选，如果session已关联房间则可省略）
 
 **服务器响应**:
 ```json
@@ -534,9 +547,13 @@
 **客户端发送**:
 ```json
 {
-  "action": "get_history"
+  "action": "get_history",
+  "roomId": "ABC123"
 }
 ```
+
+**参数说明**:
+- `roomId`: 房间ID（可选，如果session已关联房间则可省略）
 
 **服务器响应**:
 ```json
