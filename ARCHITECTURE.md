@@ -136,6 +136,20 @@ GameRoom {
     boolean finished;           // 是否结束
     CardPattern lastPattern;    // 上一次出牌
     List<Integer> finishedPlayers; // 已完成玩家
+    int passCount;              // 连续过牌计数（3人过牌后清空lastPattern）
+    int currentGameIndex;       // 当前小局索引
+    Map<String, List<Map>> gameHistory; // 游戏历史记录
+}
+```
+
+**游戏历史记录格式**:
+```json
+{
+  "game1": [
+    {"seat": 0, "movement": [...]},
+    {"seat": 1, "movement": []},
+    ...
+  ]
 }
 ```
 
@@ -222,9 +236,25 @@ GET  /get_player_game_state/{token}/{player_id} - 获取玩家状态
 // 准备状态
 {"state": true}
 
-// 游戏操作
-{"action": "play_cards", "cards": [...]}
+// 游戏查询
+{"action": "get_cards", "username": "player1"}  // 获取手牌
+{"action": "get_last_combo"}                     // 获取上一次出牌
+{"action": "get_turn"}                           // 获取当前回合玩家
+{"action": "get_history"}                        // 获取游戏历史记录
+
+// 出牌/过牌
+{"cards": [...]}  // 出牌
+{"cards": []}     // 过牌
+
+// 服务器推送
+{"msg": "is your turn"}  // 轮到你出牌
+{"seat": 0, "movement": [...]}  // 出牌广播
 ```
+
+**通信模式**:
+- 当玩家或Agent成功出牌后，服务器向房间内所有玩家广播 `{"seat": seat, "movement": cards}`
+- 当轮到某玩家出牌时，服务器向该玩家推送 `{"msg": "is your turn"}`
+- 客户端需要主动查询游戏状态（手牌、上一次出牌、当前回合等）
 
 **连接管理**:
 ```java

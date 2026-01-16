@@ -21,6 +21,9 @@ public class GameRoom {
     private TributeState tributeState;
     private int firstPlayer;
     private Long hostId;
+    private int currentGameIndex = 1;
+    private Map<String, List<Map<String, Object>>> gameHistory = new HashMap<>();
+    private int passCount = 0;
     
     @Data
     public static class Player {

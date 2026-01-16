@@ -13,7 +13,7 @@ public class GameService {
         Collections.shuffle(deck);
         
         for (int i = 0; i < 4; i++) {
-            room.getPlayers()[i].setHand(deck.subList(i * 27, (i + 1) * 27));
+            room.getPlayers()[i].setHand(new ArrayList<>(deck.subList(i * 27, (i + 1) * 27)));
         }
         
         room.setCurrentPlayer(room.getFirstPlayer());
@@ -22,6 +22,10 @@ public class GameService {
         room.setLastPattern(null);
         room.setFinishedPlayers(new ArrayList<>());
         room.getCurrentRoundCards().clear();
+        room.setPassCount(0);
+        
+        String gameKey = "game" + room.getCurrentGameIndex();
+        room.getGameHistory().put(gameKey, new ArrayList<>());
     }
     
     private List<Card> createDeck() {
@@ -122,13 +126,21 @@ public class GameService {
         CardPattern pattern = analyzePattern(cards, room.getLevel());
         if (pattern == null && !cards.isEmpty()) return false;
         
-        if (room.getLastPattern() != null && !pattern.canBeat(room.getLastPattern(), room.getLevel())) {
+        boolean isPass = cards.isEmpty();
+        
+        if (!isPass && room.getLastPattern() != null && room.getPassCount() < 3 && !pattern.canBeat(room.getLastPattern(), room.getLevel())) {
             return false;
         }
         
+        // 记录历史
+        String gameKey = "game" + room.getCurrentGameIndex();
+        Map<String, Object> move = new HashMap<>();
+        move.put("seat", playerId);
+        move.put("movement", new ArrayList<>(cards));
+        room.getGameHistory().get(gameKey).add(move);
+        
         GameRoom.Player player = room.getPlayers()[playerId];
         player.getHand().removeAll(cards);
-        
         room.getCurrentRoundCards().put(playerId, cards);
         
         if (player.getHand().isEmpty()) {
@@ -139,9 +151,16 @@ public class GameService {
             }
         }
         
-        if (!cards.isEmpty()) {
+        if (isPass) {
+            room.setPassCount(room.getPassCount() + 1);
+            if (room.getPassCount() >= 3) {
+                room.setLastPattern(null);
+                room.setPassCount(0);
+            }
+        } else {
             room.setLastPattern(pattern);
             room.setLastPlayerId(playerId);
+            room.setPassCount(0);
         }
         
         room.setCurrentPlayer((playerId + 1) % 4);

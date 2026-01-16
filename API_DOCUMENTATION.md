@@ -464,12 +464,101 @@
 
 ### 6. 游戏进行中的消息
 
-#### 6.1 出牌
+#### 6.1 获取手牌
 
 **客户端发送**:
 ```json
 {
-  "action": "play_cards",
+  "action": "get_cards",
+  "username": "player1"
+}
+```
+
+**服务器响应**:
+```json
+{
+  "cards": [
+    {"color": "Spade", "number": 2},
+    {"color": "Heart", "number": 3}
+  ],
+  "username": "player1"
+}
+```
+
+#### 6.2 获取上一次出牌
+
+**客户端发送**:
+```json
+{
+  "action": "get_last_combo"
+}
+```
+
+**服务器响应**（有上一次出牌时）:
+```json
+{
+  "cards": [
+    {"color": "Spade", "number": 2},
+    {"color": "Heart", "number": 2}
+  ],
+  "pattern": "PAIR"
+}
+```
+
+**服务器响应**（初始或3人都过牌后）:
+```json
+{
+  "cards": [],
+  "pattern": null
+}
+```
+
+#### 6.3 获取当前回合玩家
+
+**客户端发送**:
+```json
+{
+  "action": "get_turn"
+}
+```
+
+**服务器响应**:
+```json
+{
+  "seat": 2
+}
+```
+
+#### 6.4 获取游戏历史记录
+
+**客户端发送**:
+```json
+{
+  "action": "get_history"
+}
+```
+
+**服务器响应**:
+```json
+{
+  "game1": [
+    {"seat": 0, "movement": [{"color": "Spade", "number": 5}]},
+    {"seat": 1, "movement": []},
+    {"seat": 2, "movement": [{"color": "Heart", "number": 7}]}
+  ]
+}
+```
+
+**说明**:
+- `game1` 表示第一小局游戏
+- `movement` 为空数组表示过牌
+- 单局房间中只包含一小局游戏记录
+
+#### 6.5 出牌
+
+**客户端发送**:
+```json
+{
   "cards": [
     {"color": "Spade", "number": 2},
     {"color": "Heart", "number": 2}
@@ -477,33 +566,74 @@
 }
 ```
 
-**服务器广播**（游戏状态更新）:
+**服务器响应**（出牌成功）:
 ```json
 {
-  "type": "game_update",
-  "current_player": 1,
-  "last_play": {
-    "player": 0,
-    "cards": [
-      {"color": "Spade", "number": 2},
-      {"color": "Heart", "number": 2}
-    ],
-    "pattern": "PAIR"
-  },
-  "finished_players": []
+  "cards": [
+    {"color": "Spade", "number": 2},
+    {"color": "Heart", "number": 2}
+  ],
+  "username": "player1"
 }
 ```
 
-#### 6.2 过牌
+**服务器响应**（出牌失败）:
+```json
+{
+  "error": "Invalid play"
+}
+```
+
+**服务器响应**（不是你的回合）:
+```json
+{
+  "error": "Not your turn"
+}
+```
+
+#### 6.6 过牌
 
 **客户端发送**:
 ```json
 {
-  "action": "pass"
+  "cards": []
 }
 ```
 
-#### 6.3 游戏结束
+**说明**: 发送空的cards数组表示过牌
+
+#### 6.7 轮到你出牌通知
+
+**服务器推送**（当轮到该玩家出牌时）:
+```json
+{
+  "msg": "is your turn"
+}
+```
+
+**说明**: 
+- 游戏开始时，服务器会向第一个出牌的玩家发送此消息
+- 每次有玩家出牌后，服务器会向下一个应该出牌的玩家发送此消息
+
+#### 6.8 出牌广播
+
+**服务器广播**（当任意玩家成功出牌时）:
+```json
+{
+  "seat": 0,
+  "movement": [
+    {"color": "Spade", "number": 5},
+    {"color": "Heart", "number": 5}
+  ]
+}
+```
+
+**说明**:
+- 当玩家或 Agent 成功出牌后，服务器会向房间内所有玩家广播此消息
+- `seat`: 出牌玩家的座位号（0-3）
+- `movement`: 打出的牌，空数组表示过牌
+
+#### 6.8 游戏结束
 
 **服务器广播**:
 ```json
@@ -671,6 +801,15 @@ ws.send(JSON.stringify({
 ---
 
 ## 版本历史
+
+- **v0.0.2** (2026-01-16): 通信协议优化
+  - 新增 `get_cards` action 获取手牌
+  - 新增 `get_last_combo` action 获取上一次出牌
+  - 新增 `get_turn` action 获取当前回合玩家
+  - 新增 `get_history` action 获取游戏历史记录
+  - 向当前玩家推送 "is your turn" 通知
+  - 出牌成功后向所有玩家广播 `{"seat": seat, "movement": cards}`
+  - 添加游戏历史记录功能
 
 - **v0.0.1** (2026-01-14): 初始版本
   - 实现基础认证功能

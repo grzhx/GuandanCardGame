@@ -47,6 +47,14 @@ public class GameWebSocketHandler implements WebSocketHandler {
         
         if ("get_data".equals(action)) {
             handleGetData(session, msg);
+        } else if ("get_cards".equals(action)) {
+            handleGetCards(session, msg);
+        } else if ("get_last_combo".equals(action)) {
+            handleGetLastCombo(session);
+        } else if ("get_turn".equals(action)) {
+            handleGetTurn(session);
+        } else if ("get_history".equals(action)) {
+            handleGetHistory(session);
         } else if (msg.containsKey("roomId")) {
             handleRoomAction(session, msg);
         } else if (msg.containsKey("state")) {
@@ -54,6 +62,54 @@ public class GameWebSocketHandler implements WebSocketHandler {
         } else if (msg.containsKey("cards")) {
             handlePlayCards(session, msg);
         }
+    }
+    
+    private void handleGetCards(WebSocketSession session, Map<String, Object> msg) throws Exception {
+        String roomId = sessionToRoom.get(session.getId());
+        String username = (String) msg.get("username");
+        if (roomId == null) return;
+        
+        GameRoom room = roomService.getRoom(roomId);
+        for (int i = 0; i < 4; i++) {
+            if (room.getPlayers()[i] != null && username.equals(room.getPlayers()[i].getUsername())) {
+                sendMessage(session, Map.of("cards", room.getPlayers()[i].getHand(), "username", username));
+                return;
+            }
+        }
+    }
+    
+    private void handleGetLastCombo(WebSocketSession session) throws Exception {
+        String roomId = sessionToRoom.get(session.getId());
+        if (roomId == null) return;
+        
+        GameRoom room = roomService.getRoom(roomId);
+        Map<String, Object> response = new HashMap<>();
+        if (room.getLastPattern() != null && room.getPassCount() < 3) {
+            response.put("cards", room.getLastPattern().getCards());
+            response.put("pattern", room.getLastPattern().getType().name());
+        } else {
+            response.put("cards", new ArrayList<>());
+            response.put("pattern", null);
+        }
+        sendMessage(session, response);
+    }
+    
+    private void handleGetTurn(WebSocketSession session) throws Exception {
+        String roomId = sessionToRoom.get(session.getId());
+        if (roomId == null) return;
+        
+        GameRoom room = roomService.getRoom(roomId);
+        sendMessage(session, Map.of("seat", room.getCurrentPlayer()));
+    }
+    
+    private void handleGetHistory(WebSocketSession session) throws Exception {
+        String roomId = sessionToRoom.get(session.getId());
+        if (roomId == null) return;
+        
+        GameRoom room = roomService.getRoom(roomId);
+        String gameKey = "game" + room.getCurrentGameIndex();
+        List<Map<String, Object>> history = room.getGameHistory().getOrDefault(gameKey, new ArrayList<>());
+        sendMessage(session, Map.of(gameKey, history));
     }
     
     private void handleGetData(WebSocketSession session, Map<String, Object> msg) throws Exception {
@@ -140,6 +196,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
             gameService.initGame(room);
             roomService.saveRoom(room);
             broadcastToRoom(roomId, Map.of("game_state", true));
+            notifyCurrentPlayer(roomId);
             triggerAgentIfNeeded(roomId);
         }
     }
@@ -155,12 +212,20 @@ public class GameWebSocketHandler implements WebSocketHandler {
             .collect(java.util.stream.Collectors.toList());
         
         int seat = findPlayerSeat(room, session.getId());
-        if (seat < 0 || room.getCurrentPlayer() != seat) return;
+        if (seat < 0 || room.getCurrentPlayer() != seat) {
+            sendMessage(session, Map.of("error", "Not your turn"));
+            return;
+        }
+        
+        String username = room.getPlayers()[seat].getUsername();
         
         if (gameService.playCards(room, seat, cards)) {
             roomService.saveRoom(room);
-            broadcastGameState(roomId);
+            broadcastToRoom(roomId, Map.of("seat", seat, "movement", cards));
+            notifyCurrentPlayer(roomId);
             triggerAgentIfNeeded(roomId);
+        } else {
+            sendMessage(session, Map.of("error", "Invalid play"));
         }
     }
     
@@ -177,6 +242,28 @@ public class GameWebSocketHandler implements WebSocketHandler {
         return -1;
     }
     
+    private void notifyCurrentPlayer(String roomId) throws Exception {
+        GameRoom room = roomService.getRoom(roomId);
+        if (room == null || room.isFinished()) return;
+        
+        int current = room.getCurrentPlayer();
+        GameRoom.Player player = room.getPlayers()[current];
+        if (player == null || player.isAgent()) return;
+        
+        for (Map.Entry<String, String> entry : sessionToRoom.entrySet()) {
+            if (roomId.equals(entry.getValue())) {
+                WebSocketSession session = sessions.get(entry.getKey());
+                if (session != null && session.isOpen()) {
+                    int seat = findPlayerSeat(room, entry.getKey());
+                    if (seat == current) {
+                        sendMessage(session, Map.of("msg", "is your turn"));
+                        return;
+                    }
+                }
+            }
+        }
+    }
+    
     private void triggerAgentIfNeeded(String roomId) throws Exception {
         GameRoom room = roomService.getRoom(roomId);
         if (room == null || room.isFinished()) return;
@@ -190,7 +277,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
             
             if (gameService.playCards(room, current, cards)) {
                 roomService.saveRoom(room);
-                broadcastGameState(roomId);
+                broadcastToRoom(roomId, Map.of("seat", current, "movement", cards));
+                notifyCurrentPlayer(roomId);
                 triggerAgentIfNeeded(roomId);
             }
         }
