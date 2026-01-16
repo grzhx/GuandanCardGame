@@ -1,15 +1,18 @@
 package com.example.guandan.handler;
 
 import com.example.guandan.entity.PlayerStats;
+import com.example.guandan.model.Card;
 import com.example.guandan.model.GameRoom;
 import com.example.guandan.service.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class GameWebSocketHandler implements WebSocketHandler {
@@ -17,6 +20,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
     private final RoomService roomService;
     private final GameService gameService;
     private final UserService userService;
+    private final AgentService agentService;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, String> sessionToRoom = new ConcurrentHashMap<>();
@@ -29,6 +33,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
     @Override
     public void handleMessage(WebSocketSession session, WebSocketMessage<?> message) throws Exception {
         String payload = message.getPayload().toString();
+        log.info("WS Received: {}", payload);
         Map<String, Object> msg = objectMapper.readValue(payload, Map.class);
         
         String type = (String) msg.get("type");
@@ -135,6 +140,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
             gameService.initGame(room);
             roomService.saveRoom(room);
             broadcastToRoom(roomId, Map.of("game_state", true));
+            triggerAgentIfNeeded(roomId);
         }
     }
     
@@ -143,8 +149,60 @@ public class GameWebSocketHandler implements WebSocketHandler {
         if (roomId == null) return;
         
         GameRoom room = roomService.getRoom(roomId);
-        // Implementation for playing cards would go here
-        // This would parse the cards from msg and call gameService.playCards
+        List<Map<String, Object>> cardMaps = (List<Map<String, Object>>) msg.get("cards");
+        List<Card> cards = cardMaps.stream()
+            .map(m -> new Card((String) m.get("color"), (Integer) m.get("number")))
+            .collect(java.util.stream.Collectors.toList());
+        
+        int seat = findPlayerSeat(room, session.getId());
+        if (seat < 0 || room.getCurrentPlayer() != seat) return;
+        
+        if (gameService.playCards(room, seat, cards)) {
+            roomService.saveRoom(room);
+            broadcastGameState(roomId);
+            triggerAgentIfNeeded(roomId);
+        }
+    }
+    
+    private int findPlayerSeat(GameRoom room, String sessionId) {
+        for (Map.Entry<String, String> entry : sessionToRoom.entrySet()) {
+            if (entry.getKey().equals(sessionId)) {
+                for (int i = 0; i < 4; i++) {
+                    if (room.getPlayers()[i] != null && !room.getPlayers()[i].isAgent()) {
+                        return i;
+                    }
+                }
+            }
+        }
+        return -1;
+    }
+    
+    private void triggerAgentIfNeeded(String roomId) throws Exception {
+        GameRoom room = roomService.getRoom(roomId);
+        if (room == null || room.isFinished()) return;
+        
+        int current = room.getCurrentPlayer();
+        GameRoom.Player player = room.getPlayers()[current];
+        
+        if (player != null && player.isAgent()) {
+            List<Card> cards = agentService.decidePlay(room, current);
+            log.info("Agent {} plays: {}", current, cards);
+            
+            if (gameService.playCards(room, current, cards)) {
+                roomService.saveRoom(room);
+                broadcastGameState(roomId);
+                triggerAgentIfNeeded(roomId);
+            }
+        }
+    }
+    
+    private void broadcastGameState(String roomId) throws Exception {
+        GameRoom room = roomService.getRoom(roomId);
+        Map<String, Object> state = new HashMap<>();
+        state.put("currentPlayer", room.getCurrentPlayer());
+        state.put("lastPattern", room.getLastPattern());
+        state.put("finished", room.isFinished());
+        broadcastToRoom(roomId, state);
     }
     
     private void broadcastRoomInfo(String roomId) throws Exception {
@@ -175,6 +233,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
     
     private void broadcastToRoom(String roomId, Map<String, Object> message) throws Exception {
         String json = objectMapper.writeValueAsString(message);
+        log.info("WS Broadcast to room {}: {}", roomId, json);
         for (Map.Entry<String, String> entry : sessionToRoom.entrySet()) {
             if (roomId.equals(entry.getValue())) {
                 WebSocketSession session = sessions.get(entry.getKey());
@@ -187,6 +246,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
     
     private void sendMessage(WebSocketSession session, Map<String, Object> message) throws Exception {
         String json = objectMapper.writeValueAsString(message);
+        log.info("WS Sent: {}", json);
         session.sendMessage(new TextMessage(json));
     }
     

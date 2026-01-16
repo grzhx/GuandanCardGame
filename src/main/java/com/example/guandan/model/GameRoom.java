@@ -31,6 +31,7 @@ public class GameRoom {
         private boolean ready;
         private boolean online;
         private int score;
+        private boolean agent;
         
         public Player() {}
         
@@ -41,6 +42,18 @@ public class GameRoom {
             this.ready = true;
             this.online = true;
             this.score = 0;
+            this.agent = false;
+        }
+        
+        public static Player createAgent(int seat) {
+            Player p = new Player();
+            p.userId = -1L - seat;
+            p.username = "Agent" + (seat + 1);
+            p.seat = seat;
+            p.ready = true;
+            p.online = true;
+            p.agent = true;
+            return p;
         }
     }
     

@@ -1,18 +1,24 @@
 package com.example.guandan.service;
 
 import com.example.guandan.model.GameRoom;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 @Service
-@RequiredArgsConstructor
 public class RoomService {
     
     private final RedisTemplate<String, Object> redisTemplate;
     private final Random random = new Random();
+    
+    @Value("${game.auto-agent:false}")
+    private boolean autoAgent;
+    
+    public RoomService(RedisTemplate<String, Object> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
     
     public String generateRoomId() {
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -42,7 +48,7 @@ public class RoomService {
     }
     
     public void saveRoom(GameRoom room) {
-        redisTemplate.opsForValue().set("room:" + room.getRoomId(), room, 24, TimeUnit.HOURS);
+        redisTemplate.opsForValue().set("room:" + room.getRoomId(), room, 5, TimeUnit.MINUTES);
     }
     
     public void deleteRoom(String roomId) {
@@ -56,11 +62,22 @@ public class RoomService {
         for (int i = 0; i < 4; i++) {
             if (room.getPlayers()[i] == null) {
                 room.getPlayers()[i] = new GameRoom.Player(userId, username, i);
+                if (autoAgent) {
+                    fillWithAgents(room, i + 1);
+                }
                 saveRoom(room);
                 return i;
             }
         }
         return -1;
+    }
+    
+    private void fillWithAgents(GameRoom room, int startSeat) {
+        for (int i = startSeat; i < 4; i++) {
+            if (room.getPlayers()[i] == null) {
+                room.getPlayers()[i] = GameRoom.Player.createAgent(i);
+            }
+        }
     }
     
     public boolean isRoomFull(String roomId) {

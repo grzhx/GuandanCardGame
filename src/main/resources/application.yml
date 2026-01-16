@@ -21,3 +21,6 @@ mybatis:
 
 server:
   port: 8080
+
+game:
+  auto-agent: false
