@@ -13,7 +13,9 @@ public class GameService {
         Collections.shuffle(deck);
         
         for (int i = 0; i < 4; i++) {
-            room.getPlayers()[i].setHand(new ArrayList<>(deck.subList(i * 27, (i + 1) * 27)));
+            if (room.getPlayers()[i] != null) {
+                room.getPlayers()[i].setHand(new ArrayList<>(deck.subList(i * 27, (i + 1) * 27)));
+            }
         }
         
         room.setCurrentPlayer(room.getFirstPlayer());
@@ -163,7 +165,12 @@ public class GameService {
             room.setPassCount(0);
         }
         
-        room.setCurrentPlayer((playerId + 1) % 4);
+        // 单人测试房间：出牌后仍轮到自己
+        if (isSinglePlayerRoom(room)) {
+            room.setCurrentPlayer(playerId);
+        } else {
+            room.setCurrentPlayer((playerId + 1) % 4);
+        }
         
         return true;
     }
@@ -197,6 +204,14 @@ public class GameService {
         room.getPlayers()[loser2].setScore(room.getPlayers()[loser2].getScore() - upgrade);
         
         room.setLevel(room.getLevel() + upgrade);
+    }
+    
+    private boolean isSinglePlayerRoom(GameRoom room) {
+        int count = 0;
+        for (int i = 0; i < 4; i++) {
+            if (room.getPlayers()[i] != null) count++;
+        }
+        return count == 1;
     }
     
     private int calculateUpgrade(GameRoom room, int w1, int w2) {

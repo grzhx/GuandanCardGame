@@ -55,6 +55,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
             handleGetTurn(session, msg);
         } else if ("get_history".equals(action)) {
             handleGetHistory(session, msg);
+        } else if ("play_cards".equals(action)) {
+            handlePlayCards(session, msg);
         } else if (msg.containsKey("roomId")) {
             handleRoomAction(session, msg);
         } else if (msg.containsKey("state")) {
@@ -178,6 +180,34 @@ public class GameWebSocketHandler implements WebSocketHandler {
             
             sendMessage(session, Map.of("token", room.getRoomId()));
         } else {
+            // TEST 房间：创建单人测试房间
+            if ("TEST".equals(roomId)) {
+                GameRoom room = new GameRoom();
+                room.setRoomId("TEST");
+                room.setGameType("SINGLE");
+                room.setLevel(2);
+                room.setHostId(user.getId());
+                room.getPlayers()[0] = new GameRoom.Player(user.getId(), username, 0);
+                roomService.saveRoom(room);
+                sessionToRoom.put(session.getId(), "TEST");
+                broadcastRoomInfo("TEST");
+                
+                // 延迟3秒后开始游戏
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(3000);
+                        room.setFirstPlayer(0);
+                        gameService.initGame(room);
+                        roomService.saveRoom(room);
+                        broadcastToRoom("TEST", Map.of("game_state", true));
+                        notifyCurrentPlayer("TEST");
+                    } catch (Exception e) {
+                        log.error("TEST room start error", e);
+                    }
+                }).start();
+                return;
+            }
+            
             GameRoom room = roomService.getRoom(roomId);
             if (room == null) {
                 sendMessage(session, Map.of("code", 3001, "msg", "Room not found"));
@@ -232,7 +262,10 @@ public class GameWebSocketHandler implements WebSocketHandler {
     }
     
     private void handlePlayCards(WebSocketSession session, Map<String, Object> msg) throws Exception {
-        String roomId = sessionToRoom.get(session.getId());
+        String roomId = (String) msg.get("roomId");
+        if (roomId == null) {
+            roomId = sessionToRoom.get(session.getId());
+        }
         if (roomId == null) return;
         
         GameRoom room = roomService.getRoom(roomId);
