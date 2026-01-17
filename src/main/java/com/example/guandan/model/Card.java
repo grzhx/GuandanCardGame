@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Card {
     private String color; // Spade, Club, Heart, Diamond, Joker
-    private int number; // 1-14 (1=A, 11=J, 12=Q, 13=K, 14=2), 15=BlackJoker, 16=RedJoker
+    private int number; // 1-13 (1=A, 2-10=2-10, 11=J, 12=Q, 13=K), 15=BlackJoker, 16=RedJoker
     private boolean selected;
     
     public Card(String color, int number) {
@@ -50,7 +50,7 @@ public class Card {
         if (number == 5) return 4;
         if (number == 4) return 3;
         if (number == 3) return 2;
-        if (number == 14||number == 2) return 1; // 2
+        if (number == 2) return 1; // 2
         return 0;
     }
 }

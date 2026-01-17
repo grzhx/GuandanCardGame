@@ -39,7 +39,6 @@ public class GameService {
                 for (int num = 1; num <= 13; num++) {
                     deck.add(new Card(color, num));
                 }
-                deck.add(new Card(color, 14)); // 2
             }
             deck.add(new Card("Joker", 15)); // Black Joker
             deck.add(new Card("Joker", 16)); // Red Joker
@@ -130,7 +129,7 @@ public class GameService {
         
         boolean isPass = cards.isEmpty();
         
-        if (!isPass && room.getLastPattern() != null && room.getPassCount() < 3 && !pattern.canBeat(room.getLastPattern(), room.getLevel())) {
+        if (!isPass && room.getLastPattern() != null && !pattern.canBeat(room.getLastPattern(), room.getLevel())) {
             return false;
         }
         
@@ -169,7 +168,18 @@ public class GameService {
         if (isSinglePlayerRoom(room)) {
             room.setCurrentPlayer(playerId);
         } else {
-            room.setCurrentPlayer((playerId + 1) % 4);
+            int nextPlayer = (playerId + 1) % 4;
+            // 三次过牌后，下一个玩家应该是最后出牌的玩家或其队友
+            if (room.getPassCount() == 0 && room.getLastPattern() == null && room.getLastPlayerId() != -1) {
+                nextPlayer = room.getLastPlayerId();
+                if (room.getFinishedPlayers().contains(nextPlayer)) {
+                    int teammate = getTeammate(nextPlayer);
+                    if (!room.getFinishedPlayers().contains(teammate)) {
+                        nextPlayer = teammate;
+                    }
+                }
+            }
+            room.setCurrentPlayer(nextPlayer);
         }
         
         return true;
@@ -212,6 +222,10 @@ public class GameService {
             if (room.getPlayers()[i] != null) count++;
         }
         return count == 1;
+    }
+    
+    private int getTeammate(int seat) {
+        return (seat + 2) % 4;
     }
     
     private int calculateUpgrade(GameRoom room, int w1, int w2) {
