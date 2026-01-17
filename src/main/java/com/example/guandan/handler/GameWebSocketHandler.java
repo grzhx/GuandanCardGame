@@ -23,7 +23,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
     private final AgentService agentService;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
-    private final Map<String, String> sessionToRoom = new ConcurrentHashMap<>();
+    private final Map<String, String> sessionToUsername = new ConcurrentHashMap<>();
+    private final Map<String, String> usernameToRoom = new ConcurrentHashMap<>();
     
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -67,14 +68,20 @@ public class GameWebSocketHandler implements WebSocketHandler {
     }
     
     private void handleGetCards(WebSocketSession session, Map<String, Object> msg) throws Exception {
-        String roomId = (String) msg.get("roomId");
-        if (roomId == null) {
-            roomId = sessionToRoom.get(session.getId());
-        }
         String username = (String) msg.get("username");
+        if (username == null) {
+            username = sessionToUsername.get(session.getId());
+        }
+        if (username == null) {
+            log.warn("get_cards: session {} has no username", session.getId());
+            sendMessage(session, Map.of("error", "Username not found"));
+            return;
+        }
+        
+        String roomId = usernameToRoom.get(username);
         if (roomId == null) {
-            log.warn("get_cards: session {} not in any room", session.getId());
-            sendMessage(session, Map.of("error", "Not in a room, please provide roomId"));
+            log.warn("get_cards: username {} not in any room", username);
+            sendMessage(session, Map.of("error", "Not in a room"));
             return;
         }
         
@@ -88,13 +95,17 @@ public class GameWebSocketHandler implements WebSocketHandler {
     }
     
     private void handleGetLastCombo(WebSocketSession session, Map<String, Object> msg) throws Exception {
-        String roomId = (String) msg.get("roomId");
-        if (roomId == null) {
-            roomId = sessionToRoom.get(session.getId());
+        String username = sessionToUsername.get(session.getId());
+        if (username == null) {
+            log.warn("get_last_combo: session {} has no username", session.getId());
+            sendMessage(session, Map.of("error", "Username not found"));
+            return;
         }
+        
+        String roomId = usernameToRoom.get(username);
         if (roomId == null) {
-            log.warn("get_last_combo: session {} not in any room", session.getId());
-            sendMessage(session, Map.of("error", "Not in a room, please provide roomId"));
+            log.warn("get_last_combo: username {} not in any room", username);
+            sendMessage(session, Map.of("error", "Not in a room"));
             return;
         }
         
@@ -111,13 +122,17 @@ public class GameWebSocketHandler implements WebSocketHandler {
     }
     
     private void handleGetTurn(WebSocketSession session, Map<String, Object> msg) throws Exception {
-        String roomId = (String) msg.get("roomId");
-        if (roomId == null) {
-            roomId = sessionToRoom.get(session.getId());
+        String username = sessionToUsername.get(session.getId());
+        if (username == null) {
+            log.warn("get_turn: session {} has no username", session.getId());
+            sendMessage(session, Map.of("error", "Username not found"));
+            return;
         }
+        
+        String roomId = usernameToRoom.get(username);
         if (roomId == null) {
-            log.warn("get_turn: session {} not in any room", session.getId());
-            sendMessage(session, Map.of("error", "Not in a room, please provide roomId"));
+            log.warn("get_turn: username {} not in any room", username);
+            sendMessage(session, Map.of("error", "Not in a room"));
             return;
         }
         
@@ -126,13 +141,17 @@ public class GameWebSocketHandler implements WebSocketHandler {
     }
     
     private void handleGetHistory(WebSocketSession session, Map<String, Object> msg) throws Exception {
-        String roomId = (String) msg.get("roomId");
-        if (roomId == null) {
-            roomId = sessionToRoom.get(session.getId());
+        String username = sessionToUsername.get(session.getId());
+        if (username == null) {
+            log.warn("get_history: session {} has no username", session.getId());
+            sendMessage(session, Map.of("error", "Username not found"));
+            return;
         }
+        
+        String roomId = usernameToRoom.get(username);
         if (roomId == null) {
-            log.warn("get_history: session {} not in any room", session.getId());
-            sendMessage(session, Map.of("error", "Not in a room, please provide roomId"));
+            log.warn("get_history: username {} not in any room", username);
+            sendMessage(session, Map.of("error", "Not in a room"));
             return;
         }
         
@@ -176,7 +195,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
             int level = msg.containsKey("level") ? (Integer) msg.get("level") : 2;
             GameRoom room = roomService.createRoom(gameType, level, user.getId());
             roomService.addPlayer(room.getRoomId(), user.getId(), username);
-            sessionToRoom.put(session.getId(), room.getRoomId());
+            sessionToUsername.put(session.getId(), username);
+            usernameToRoom.put(username, room.getRoomId());
             
             sendMessage(session, Map.of("token", room.getRoomId()));
         } else {
@@ -189,7 +209,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
                 room.setHostId(user.getId());
                 room.getPlayers()[0] = new GameRoom.Player(user.getId(), username, 0);
                 roomService.saveRoom(room);
-                sessionToRoom.put(session.getId(), "TEST");
+                sessionToUsername.put(session.getId(), username);
+                usernameToRoom.put(username, "TEST");
                 broadcastRoomInfo("TEST");
                 
                 // 延迟3秒后开始游戏
@@ -220,7 +241,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
             }
             
             roomService.addPlayer(roomId, user.getId(), username);
-            sessionToRoom.put(session.getId(), roomId);
+            sessionToUsername.put(session.getId(), username);
+            usernameToRoom.put(username, roomId);
             broadcastRoomInfo(roomId);
             
             if (roomService.allPlayersReady(roomId)) {
@@ -234,17 +256,18 @@ public class GameWebSocketHandler implements WebSocketHandler {
     }
     
     private void handleReadyState(WebSocketSession session, Map<String, Object> msg) throws Exception {
-        String roomId = sessionToRoom.get(session.getId());
+        String username = sessionToUsername.get(session.getId());
+        if (username == null) return;
+        
+        String roomId = usernameToRoom.get(username);
         if (roomId == null) return;
         
         GameRoom room = roomService.getRoom(roomId);
         boolean ready = (Boolean) msg.get("state");
         
-        for (int i = 0; i < 4; i++) {
-            if (room.getPlayers()[i] != null && sessions.get(session.getId()) != null) {
-                room.getPlayers()[i].setReady(ready);
-                break;
-            }
+        int seat = findPlayerSeat(room, username);
+        if (seat >= 0) {
+            room.getPlayers()[seat].setReady(ready);
         }
         
         roomService.saveRoom(room);
@@ -262,10 +285,10 @@ public class GameWebSocketHandler implements WebSocketHandler {
     }
     
     private void handlePlayCards(WebSocketSession session, Map<String, Object> msg) throws Exception {
-        String roomId = (String) msg.get("roomId");
-        if (roomId == null) {
-            roomId = sessionToRoom.get(session.getId());
-        }
+        String username = sessionToUsername.get(session.getId());
+        if (username == null) return;
+        
+        String roomId = usernameToRoom.get(username);
         if (roomId == null) return;
         
         GameRoom room = roomService.getRoom(roomId);
@@ -274,13 +297,11 @@ public class GameWebSocketHandler implements WebSocketHandler {
             .map(m -> new Card((String) m.get("color"), (Integer) m.get("number")))
             .collect(java.util.stream.Collectors.toList());
         
-        int seat = findPlayerSeat(room, session.getId());
+        int seat = findPlayerSeat(room, username);
         if (seat < 0 || room.getCurrentPlayer() != seat) {
             sendMessage(session, Map.of("error", "Not your turn"));
             return;
         }
-        
-        String username = room.getPlayers()[seat].getUsername();
         
         if (gameService.playCards(room, seat, cards)) {
             roomService.saveRoom(room);
@@ -292,14 +313,12 @@ public class GameWebSocketHandler implements WebSocketHandler {
         }
     }
     
-    private int findPlayerSeat(GameRoom room, String sessionId) {
-        for (Map.Entry<String, String> entry : sessionToRoom.entrySet()) {
-            if (entry.getKey().equals(sessionId)) {
-                for (int i = 0; i < 4; i++) {
-                    if (room.getPlayers()[i] != null && !room.getPlayers()[i].isAgent()) {
-                        return i;
-                    }
-                }
+    private int findPlayerSeat(GameRoom room, String username) {
+        if (room == null || username == null) return -1;
+        for (int i = 0; i < 4; i++) {
+            if (room.getPlayers()[i] != null && 
+                username.equals(room.getPlayers()[i].getUsername())) {
+                return i;
             }
         }
         return -1;
@@ -313,15 +332,13 @@ public class GameWebSocketHandler implements WebSocketHandler {
         GameRoom.Player player = room.getPlayers()[current];
         if (player == null || player.isAgent()) return;
         
-        for (Map.Entry<String, String> entry : sessionToRoom.entrySet()) {
-            if (roomId.equals(entry.getValue())) {
+        String currentUsername = player.getUsername();
+        for (Map.Entry<String, String> entry : sessionToUsername.entrySet()) {
+            if (currentUsername.equals(entry.getValue())) {
                 WebSocketSession session = sessions.get(entry.getKey());
                 if (session != null && session.isOpen()) {
-                    int seat = findPlayerSeat(room, entry.getKey());
-                    if (seat == current) {
-                        sendMessage(session, Map.of("msg", "is your turn"));
-                        return;
-                    }
+                    sendMessage(session, Map.of("msg", "is your turn"));
+                    return;
                 }
             }
         }
@@ -368,10 +385,12 @@ public class GameWebSocketHandler implements WebSocketHandler {
             playerInfo.put("seat", i);
             if (room.getPlayers()[i] != null) {
                 playerInfo.put("uid", room.getPlayers()[i].getUserId());
+                playerInfo.put("username", room.getPlayers()[i].getUsername());
                 playerInfo.put("ready", room.getPlayers()[i].isReady());
                 playerInfo.put("online", room.getPlayers()[i].isOnline());
             } else {
                 playerInfo.put("uid", 0);
+                playerInfo.put("username", null);
                 playerInfo.put("ready", false);
                 playerInfo.put("online", false);
             }
@@ -385,8 +404,9 @@ public class GameWebSocketHandler implements WebSocketHandler {
     private void broadcastToRoom(String roomId, Map<String, Object> message) throws Exception {
         String json = objectMapper.writeValueAsString(message);
         log.info("WS Broadcast to room {}: {}", roomId, json);
-        for (Map.Entry<String, String> entry : sessionToRoom.entrySet()) {
-            if (roomId.equals(entry.getValue())) {
+        for (Map.Entry<String, String> entry : sessionToUsername.entrySet()) {
+            String username = entry.getValue();
+            if (roomId.equals(usernameToRoom.get(username))) {
                 WebSocketSession session = sessions.get(entry.getKey());
                 if (session != null && session.isOpen()) {
                     session.sendMessage(new TextMessage(json));
@@ -403,14 +423,20 @@ public class GameWebSocketHandler implements WebSocketHandler {
     
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
+        String username = sessionToUsername.remove(session.getId());
+        if (username != null) {
+            usernameToRoom.remove(username);
+        }
         sessions.remove(session.getId());
-        sessionToRoom.remove(session.getId());
     }
     
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) {
+        String username = sessionToUsername.remove(session.getId());
+        if (username != null) {
+            usernameToRoom.remove(username);
+        }
         sessions.remove(session.getId());
-        sessionToRoom.remove(session.getId());
     }
     
     @Override
