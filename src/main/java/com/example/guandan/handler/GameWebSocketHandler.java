@@ -303,9 +303,19 @@ public class GameWebSocketHandler implements WebSocketHandler {
             return;
         }
         
+        boolean wasFinished = room.getFinishedPlayers().contains(seat);
+        
         if (gameService.playCards(room, seat, cards)) {
             roomService.saveRoom(room);
             broadcastToRoom(roomId, Map.of("seat", seat, "movement", cards));
+            
+            if (!wasFinished && room.getFinishedPlayers().contains(seat)) {
+                broadcastToRoom(roomId, Map.of(
+                    "msg", "someone clear his hand",
+                    "seat", seat,
+                    "username", username
+                ));
+            }
             
             if (room.isFinished()) {
                 broadcastRoundEnd(roomId);
