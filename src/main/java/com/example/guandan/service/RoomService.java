@@ -48,7 +48,7 @@ public class RoomService {
     }
     
     public void saveRoom(GameRoom room) {
-        redisTemplate.opsForValue().set("room:" + room.getRoomId(), room, 5, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set("room:" + room.getRoomId(), room, 10, TimeUnit.MINUTES);
     }
     
     public void deleteRoom(String roomId) {

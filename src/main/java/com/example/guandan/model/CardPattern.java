@@ -15,7 +15,7 @@ public class CardPattern {
     private List<Card> cards;
     
     public enum PatternType {
-        SINGLE, PAIR, TRIPLE, STRAIGHT, TRIPLE_STRAIGHT, PAIR_STRAIGHT, BOMB, STRAIGHT_FLUSH, KING_BOMB, PASS
+        SINGLE, PAIR, TRIPLE, FULLHOUSE, STRAIGHT, TRIPLE_STRAIGHT, PAIR_STRAIGHT, BOMB, STRAIGHT_FLUSH, KING_BOMB, PASS
     }
     
     public boolean canBeat(CardPattern other, int level) {
@@ -50,6 +50,10 @@ public class CardPattern {
         }
         
         if (this.type == PatternType.STRAIGHT_FLUSH) return true;
+        
+        if (this.type == PatternType.FULLHOUSE && other.type == PatternType.FULLHOUSE) {
+            return this.rank > other.rank;
+        }
         
         if (this.type != other.type) return false;
         if (this.count != other.count) return false;

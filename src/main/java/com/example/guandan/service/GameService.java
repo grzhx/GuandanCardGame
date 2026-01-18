@@ -110,6 +110,33 @@ public class GameService {
             }
         }
         
+        // Full House (3+2)
+        if (size == 5) {
+            List<Map.Entry<Integer, Long>> groups = new ArrayList<>(counts.entrySet());
+            groups.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
+            
+            if (wildcards.isEmpty() && groups.size() == 2 && 
+                groups.get(0).getValue() == 3 && groups.get(1).getValue() == 2) {
+                return new CardPattern(CardPattern.PatternType.FULLHOUSE, 
+                    new Card("", groups.get(0).getKey()).getRank(level), 5, cards);
+            } else if (!wildcards.isEmpty()) {
+                if (groups.size() == 1 && groups.get(0).getValue() + wildcards.size() == 5) {
+                    return new CardPattern(CardPattern.PatternType.FULLHOUSE, 
+                        new Card("", groups.get(0).getKey()).getRank(level), 5, cards);
+                } else if (groups.size() == 2) {
+                    long max = groups.get(0).getValue();
+                    long min = groups.get(1).getValue();
+                    if ((max == 3 && min + wildcards.size() == 2) || 
+                        (max + wildcards.size() == 3 && min == 2) ||
+                        (max == 2 && min + wildcards.size() == 3) ||
+                        (max + wildcards.size() >= 3 && min + (wildcards.size() - (3 - max)) == 2)) {
+                        return new CardPattern(CardPattern.PatternType.FULLHOUSE, 
+                            new Card("", groups.get(0).getKey()).getRank(level), 5, cards);
+                    }
+                }
+            }
+        }
+        
         // Straight (wildcards can fill gaps)
         if (size >= 5 && isConsecutiveWithWildcards(cards, level, 1, wildcards.size())) {
             return new CardPattern(CardPattern.PatternType.STRAIGHT, getMaxRank(cards, level), size, cards);
