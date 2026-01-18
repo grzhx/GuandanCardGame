@@ -59,12 +59,27 @@ public class GameService {
             return new CardPattern(CardPattern.PatternType.KING_BOMB, 16, 4, cards);
         }
         
-        // Bomb
-        Map<Integer, Long> counts = cards.stream()
+        // Separate wildcards (red heart level cards) from regular cards
+        List<Card> wildcards = cards.stream()
+            .filter(c -> c.isRedHeartLevelCard(level))
+            .collect(Collectors.toList());
+        List<Card> regularCards = cards.stream()
+            .filter(c -> !c.isRedHeartLevelCard(level))
+            .collect(Collectors.toList());
+        
+        // Bomb (wildcards can form bombs with same number cards)
+        Map<Integer, Long> counts = regularCards.stream()
             .collect(Collectors.groupingBy(Card::getNumber, Collectors.counting()));
         
-        if (counts.size() == 1 && size >= 4) {
-            int num = cards.get(0).getNumber();
+        if (!wildcards.isEmpty()) {
+            for (Map.Entry<Integer, Long> entry : counts.entrySet()) {
+                if (entry.getValue() + wildcards.size() >= 4) {
+                    return new CardPattern(CardPattern.PatternType.BOMB, 
+                        new Card("", entry.getKey()).getRank(level), 
+                        (int)(entry.getValue() + wildcards.size()), cards);
+                }
+            }
+        } else if (counts.size() == 1 && size >= 4) {
             return new CardPattern(CardPattern.PatternType.BOMB, cards.get(0).getRank(level), size, cards);
         }
         
@@ -73,28 +88,40 @@ public class GameService {
             return new CardPattern(CardPattern.PatternType.SINGLE, cards.get(0).getRank(level), 1, cards);
         }
         
-        // Pair
-        if (size == 2 && counts.size() == 1) {
-            return new CardPattern(CardPattern.PatternType.PAIR, cards.get(0).getRank(level), 2, cards);
+        // Pair (wildcard can complete a pair)
+        if (size == 2) {
+            if (wildcards.isEmpty() && counts.size() == 1) {
+                return new CardPattern(CardPattern.PatternType.PAIR, cards.get(0).getRank(level), 2, cards);
+            } else if (wildcards.size() == 1 && regularCards.size() == 1) {
+                return new CardPattern(CardPattern.PatternType.PAIR, regularCards.get(0).getRank(level), 2, cards);
+            }
         }
         
-        // Triple
-        if (size == 3 && counts.size() == 1) {
-            return new CardPattern(CardPattern.PatternType.TRIPLE, cards.get(0).getRank(level), 3, cards);
+        // Triple (wildcards can complete a triple)
+        if (size == 3) {
+            if (wildcards.isEmpty() && counts.size() == 1) {
+                return new CardPattern(CardPattern.PatternType.TRIPLE, cards.get(0).getRank(level), 3, cards);
+            } else if (!wildcards.isEmpty() && counts.size() == 1) {
+                int num = regularCards.get(0).getNumber();
+                if (counts.get(num) + wildcards.size() == 3) {
+                    return new CardPattern(CardPattern.PatternType.TRIPLE, 
+                        new Card("", num).getRank(level), 3, cards);
+                }
+            }
         }
         
-        // Straight
-        if (size >= 5 && isConsecutive(cards, level, 1)) {
+        // Straight (wildcards can fill gaps)
+        if (size >= 5 && isConsecutiveWithWildcards(cards, level, 1, wildcards.size())) {
             return new CardPattern(CardPattern.PatternType.STRAIGHT, getMaxRank(cards, level), size, cards);
         }
         
-        // Pair Straight
-        if (size >= 6 && size % 2 == 0 && isConsecutive(cards, level, 2)) {
+        // Pair Straight (wildcards can complete pairs or fill gaps)
+        if (size >= 6 && size % 2 == 0 && isConsecutiveWithWildcards(cards, level, 2, wildcards.size())) {
             return new CardPattern(CardPattern.PatternType.PAIR_STRAIGHT, getMaxRank(cards, level), size, cards);
         }
         
-        // Triple Straight
-        if (size >= 6 && size % 3 == 0 && isConsecutive(cards, level, 3)) {
+        // Triple Straight (wildcards can complete triples or fill gaps)
+        if (size >= 6 && size % 3 == 0 && isConsecutiveWithWildcards(cards, level, 3, wildcards.size())) {
             return new CardPattern(CardPattern.PatternType.TRIPLE_STRAIGHT, getMaxRank(cards, level), size, cards);
         }
         
@@ -115,6 +142,40 @@ public class GameService {
         }
         
         return true;
+    }
+    
+    private boolean isConsecutiveWithWildcards(List<Card> cards, int level, int groupSize, int wildcardCount) {
+        if (wildcardCount == 0) {
+            return isConsecutive(cards, level, groupSize);
+        }
+        
+        List<Card> regularCards = cards.stream()
+            .filter(c -> !c.isRedHeartLevelCard(level))
+            .collect(Collectors.toList());
+        
+        Map<Integer, Long> counts = regularCards.stream()
+            .collect(Collectors.groupingBy(Card::getNumber, Collectors.counting()));
+        
+        if (counts.isEmpty()) return false;
+        
+        List<Integer> nums = new ArrayList<>(counts.keySet());
+        Collections.sort(nums);
+        
+        int expectedGroups = cards.size() / groupSize;
+        int minNum = nums.get(0);
+        int maxNum = nums.get(nums.size() - 1);
+        
+        if (maxNum - minNum + 1 != expectedGroups) return false;
+        
+        int needed = 0;
+        for (int num = minNum; num <= maxNum; num++) {
+            long count = counts.getOrDefault(num, 0L);
+            if (count < groupSize) {
+                needed += groupSize - count;
+            }
+        }
+        
+        return needed <= wildcardCount;
     }
     
     private int getMaxRank(List<Card> cards, int level) {
