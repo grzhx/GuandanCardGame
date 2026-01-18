@@ -217,11 +217,12 @@ public class GameWebSocketHandler implements WebSocketHandler {
                 new Thread(() -> {
                     try {
                         Thread.sleep(3000);
-                        room.setFirstPlayer(0);
-                        gameService.initGame(room);
-                        roomService.saveRoom(room);
-                        broadcastToRoom("TEST", Map.of("game_state", true));
-                        notifyCurrentPlayer("TEST");
+                room.setFirstPlayer(0);
+                gameService.initGame(room);
+                roomService.saveRoom(room);
+                broadcastToRoom("TEST", Map.of("game_state", true));
+                broadcastToRoom("TEST", Map.of("seat", room.getCurrentPlayer()));
+                notifyCurrentPlayer("TEST");
                     } catch (Exception e) {
                         log.error("TEST room start error", e);
                     }
@@ -279,6 +280,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
             gameService.initGame(room);
             roomService.saveRoom(room);
             broadcastToRoom(roomId, Map.of("game_state", true));
+            broadcastToRoom(roomId, Map.of("seat", room.getCurrentPlayer()));
             notifyCurrentPlayer(roomId);
             triggerAgentIfNeeded(roomId);
         }

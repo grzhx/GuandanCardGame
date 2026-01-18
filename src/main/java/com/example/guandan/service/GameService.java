@@ -212,6 +212,13 @@ public class GameService {
         
         if (player.getHand().isEmpty()) {
             room.getFinishedPlayers().add(playerId);
+            // 检查队友是否也出完牌
+            int teammate = (playerId + 2) % 4;
+            if (room.getFinishedPlayers().contains(teammate)) {
+                finishGame(room);
+                return true;
+            }
+            // 或者检查是否所有人都出完
             if (room.getFinishedPlayers().size() == 4) {
                 finishGame(room);
                 return true;
