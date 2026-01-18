@@ -240,6 +240,11 @@ public class GameService {
                     }
                 }
             }
+            // 跳过已完成的玩家
+            while (room.getFinishedPlayers().contains(nextPlayer) && 
+                   room.getFinishedPlayers().size() < 4) {
+                nextPlayer = (nextPlayer + 1) % 4;
+            }
             room.setCurrentPlayer(nextPlayer);
         }
         
