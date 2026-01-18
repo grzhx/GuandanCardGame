@@ -206,7 +206,7 @@ mvn spring-boot:run
 {
   "turn": 2,
   "deck": [
-    {"color": "Spade", "number": 2, "selected": false}
+    {"color": "Spade", "number": 2}
   ],
   "comp": [[], null, [], []],
   "started": true,

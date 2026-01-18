@@ -119,7 +119,6 @@ public class GameController {
             Map<String, Object> cardMap = new HashMap<>();
             cardMap.put("color", card.getColor());
             cardMap.put("number", card.getNumber());
-            cardMap.put("selected", card.isSelected());
             result.add(cardMap);
         }
         return result;

@@ -185,22 +185,22 @@
 {
   "turn": 2,
   "deck": [
-    {"color": "Spade", "number": 2, "selected": false},
-    {"color": "Heart", "number": 3, "selected": false},
-    {"color": "Diamond", "number": 5, "selected": false}
+    {"color": "Spade", "number": 2},
+    {"color": "Heart", "number": 3},
+    {"color": "Diamond", "number": 5}
   ],
   "comp": [
-    [{"color": "Club", "number": 7, "selected": false}],
+    [{"color": "Club", "number": 7}],
     [],
     null,
-    [{"color": "Heart", "number": 10, "selected": false}]
+    [{"color": "Heart", "number": 10}]
   ],
   "started": true,
   "player_comp": [
-    [{"color": "Spade", "number": 4, "selected": false}],
+    [{"color": "Spade", "number": 4}],
     null,
     null,
-    [{"color": "Diamond", "number": 8, "selected": false}]
+    [{"color": "Diamond", "number": 8}]
   ],
   "finished_players": [0],
   "finished": false,
@@ -214,10 +214,10 @@
   "started": true,
   "paused": true,
   "player_comp": [
-    [{"color": "Spade", "number": 4, "selected": false}],
+    [{"color": "Spade", "number": 4}],
     null,
     null,
-    [{"color": "Diamond", "number": 8, "selected": false}]
+    [{"color": "Diamond", "number": 8}]
   ]
 }
 ```
@@ -248,8 +248,7 @@
 ```json
 {
   "color": "Spade",    // 花色: Spade, Club, Heart, Diamond, Joker
-  "number": 2,         // 牌面值: 1-13 (1=A, 2-10=2-10, 11=J, 12=Q, 13=K), 15=黑王, 16=红王
-  "selected": false    // UI选择状态
+  "number": 2          // 牌面值: 1-13 (1=A, 2-10=2-10, 11=J, 12=Q, 13=K), 15=黑王, 16=红王
 }
 ```
 
