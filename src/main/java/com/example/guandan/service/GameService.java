@@ -215,7 +215,9 @@ public class GameService {
         
         if (isPass) {
             room.setPassCount(room.getPassCount() + 1);
-            if (room.getPassCount() >= 3) {
+            int remainingPlayers = 4 - room.getFinishedPlayers().size();
+            int requiredPasses = remainingPlayers - 1;
+            if (room.getPassCount() >= requiredPasses) {
                 room.setLastPattern(null);
                 room.setPassCount(0);
             }
@@ -279,7 +281,13 @@ public class GameService {
         room.getPlayers()[loser1].setScore(room.getPlayers()[loser1].getScore() - upgrade);
         room.getPlayers()[loser2].setScore(room.getPlayers()[loser2].getScore() - upgrade);
         
-        room.setLevel(room.getLevel() + upgrade);
+        int newLevel = room.getLevel() + upgrade;
+        if (newLevel > 14) {
+            room.setLevel(14);
+            room.setGameOver(true);
+        } else {
+            room.setLevel(newLevel);
+        }
     }
     
     private boolean isSinglePlayerRoom(GameRoom room) {
