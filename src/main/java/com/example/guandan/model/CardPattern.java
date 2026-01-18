@@ -30,7 +30,7 @@ public class CardPattern {
         
         if (other.type == PatternType.BOMB) {
             if (this.type == PatternType.STRAIGHT_FLUSH) {
-                return other.count >= 5 ? false : true;
+                return other.count < 5;
             }
             if (this.type != PatternType.BOMB) return false;
             if (this.count != other.count) return this.count > other.count;
@@ -39,7 +39,7 @@ public class CardPattern {
         
         if (this.type == PatternType.BOMB) {
             if (other.type == PatternType.STRAIGHT_FLUSH) {
-                return this.count >= 5 ? true : false;
+                return this.count >= 5;
             }
             return true;
         }

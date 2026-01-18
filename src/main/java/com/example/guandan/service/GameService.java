@@ -125,6 +125,11 @@ public class GameService {
             return new CardPattern(CardPattern.PatternType.TRIPLE_STRAIGHT, getMaxRank(cards, level), size, cards);
         }
         
+        // Straight Flush (at least 5 cards, same suit, consecutive)
+        if (size >= 5 && isStraightFlush(cards, level, wildcards.size())) {
+            return new CardPattern(CardPattern.PatternType.STRAIGHT_FLUSH, getMaxRank(cards, level), size, cards);
+        }
+        
         return null;
     }
     
@@ -172,6 +177,42 @@ public class GameService {
             long count = counts.getOrDefault(num, 0L);
             if (count < groupSize) {
                 needed += groupSize - count;
+            }
+        }
+        
+        return needed <= wildcardCount;
+    }
+    
+    private boolean isStraightFlush(List<Card> cards, int level, int wildcardCount) {
+        List<Card> regularCards = cards.stream()
+            .filter(c -> !c.isRedHeartLevelCard(level))
+            .collect(Collectors.toList());
+        
+        if (regularCards.isEmpty()) return false;
+        
+        // Check if all regular cards have the same suit
+        String suit = regularCards.get(0).getColor();
+        if (!regularCards.stream().allMatch(c -> c.getColor().equals(suit))) {
+            return false;
+        }
+        
+        // Check if cards form a consecutive sequence (with wildcards filling gaps)
+        Map<Integer, Long> counts = regularCards.stream()
+            .collect(Collectors.groupingBy(Card::getNumber, Collectors.counting()));
+        
+        List<Integer> nums = new ArrayList<>(counts.keySet());
+        Collections.sort(nums);
+        
+        int expectedCards = cards.size();
+        int minNum = nums.get(0);
+        int maxNum = nums.get(nums.size() - 1);
+        
+        if (maxNum - minNum + 1 != expectedCards) return false;
+        
+        int needed = 0;
+        for (int num = minNum; num <= maxNum; num++) {
+            if (!counts.containsKey(num)) {
+                needed++;
             }
         }
         
