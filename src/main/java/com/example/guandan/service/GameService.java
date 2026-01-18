@@ -216,7 +216,13 @@ public class GameService {
         if (isPass) {
             room.setPassCount(room.getPassCount() + 1);
             int remainingPlayers = 4 - room.getFinishedPlayers().size();
-            int requiredPasses = remainingPlayers - 1;
+            // 如果最后出牌的玩家已经出完牌，需要所有剩余玩家都过牌才能接风
+            int requiredPasses;
+            if (room.getLastPlayerId() != -1 && room.getFinishedPlayers().contains(room.getLastPlayerId())) {
+                requiredPasses = remainingPlayers;
+            } else {
+                requiredPasses = remainingPlayers - 1;
+            }
             if (room.getPassCount() >= requiredPasses) {
                 room.setLastPattern(null);
                 room.setPassCount(0);
