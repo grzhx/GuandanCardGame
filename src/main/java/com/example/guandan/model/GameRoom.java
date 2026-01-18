@@ -13,6 +13,7 @@ public class GameRoom {
     private boolean started;
     private boolean finished;
     private boolean paused;
+    private boolean gameOver = false;
     private CardPattern lastPattern;
     private int lastPlayerId;
     private List<Integer> finishedPlayers = new ArrayList<>();

@@ -306,6 +306,16 @@ public class GameWebSocketHandler implements WebSocketHandler {
         if (gameService.playCards(room, seat, cards)) {
             roomService.saveRoom(room);
             broadcastToRoom(roomId, Map.of("seat", seat, "movement", cards));
+            
+            if (room.isFinished()) {
+                broadcastRoundEnd(roomId);
+                
+                if (room.isGameOver()) {
+                    broadcastGameOver(roomId);
+                    return;
+                }
+            }
+            
             notifyCurrentPlayer(roomId);
             triggerAgentIfNeeded(roomId);
         } else {
@@ -362,6 +372,30 @@ public class GameWebSocketHandler implements WebSocketHandler {
                 triggerAgentIfNeeded(roomId);
             }
         }
+    }
+    
+    private void broadcastRoundEnd(String roomId) throws Exception {
+        GameRoom room = roomService.getRoom(roomId);
+        Map<String, Object> message = new HashMap<>();
+        message.put("type", "game_end");
+        message.put("ranks", room.getRanks());
+        
+        int[] scores = new int[4];
+        for (int i = 0; i < 4; i++) {
+            scores[i] = room.getPlayers()[i].getScore();
+        }
+        message.put("scores", scores);
+        
+        int team0Score = scores[0] + scores[2];
+        int team1Score = scores[1] + scores[3];
+        message.put("winner_team", team0Score > team1Score ? 0 : 1);
+        message.put("final_level", room.getLevel());
+        
+        broadcastToRoom(roomId, message);
+    }
+    
+    private void broadcastGameOver(String roomId) throws Exception {
+        broadcastToRoom(roomId, Map.of("msg", "game end in this room"));
     }
     
     private void broadcastGameState(String roomId) throws Exception {
