@@ -317,6 +317,21 @@ public class GameWebSocketHandler implements WebSocketHandler {
                 ));
             }
             
+            // 检测"接风"：三次过牌后轮到队友出牌
+            if (room.getPassCount() == 0 && 
+                room.getLastPattern() == null && 
+                room.getLastPlayerId() != -1 &&
+                room.getFinishedPlayers().contains(room.getLastPlayerId())) {
+                
+                int teammate = (room.getLastPlayerId() + 2) % 4;
+                if (room.getCurrentPlayer() == teammate) {
+                    broadcastToRoom(roomId, Map.of(
+                        "msg", "turn change",
+                        "seat", teammate
+                    ));
+                }
+            }
+            
             if (room.isFinished()) {
                 broadcastRoundEnd(roomId);
                 
