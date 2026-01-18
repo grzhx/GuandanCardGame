@@ -190,6 +190,11 @@ public class GameService {
         
         boolean isPass = cards.isEmpty();
         
+        // 当可以出任意牌时（lastPattern为null），不允许pass
+        if (isPass && room.getLastPattern() == null) {
+            return false;
+        }
+        
         if (!isPass && room.getLastPattern() != null && !pattern.canBeat(room.getLastPattern(), room.getLevel())) {
             return false;
         }
