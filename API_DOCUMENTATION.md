@@ -640,7 +640,8 @@
   "movement": [
     {"color": "Spade", "number": 5},
     {"color": "Heart", "number": 5}
-  ]
+  ],
+  "pattern": "PAIR"
 }
 ```
 
@@ -648,6 +649,20 @@
 - 当玩家或 Agent 成功出牌后，服务器会向房间内所有玩家广播此消息
 - `seat`: 出牌玩家的座位号（0-3）
 - `movement`: 打出的牌，空数组表示过牌
+- `pattern`: 出牌的牌型类型（见下方牌型说明）
+
+**牌型类型**:
+- `SINGLE`: 单牌
+- `PAIR`: 对子
+- `TRIPLE`: 三同张
+- `STRAIGHT`: 顺子
+- `PAIR_STRAIGHT`: 三连对
+- `TRIPLE_STRAIGHT`: 钢板
+- `FULLHOUSE`: 葫芦
+- `BOMB`: 炸弹
+- `STRAIGHT_FLUSH`: 同花顺
+- `KING_BOMB`: 天王炸
+- `PASS`: 过牌（此时 movement 为空数组）
 
 #### 6.9 玩家出完牌通知
 
@@ -882,6 +897,11 @@ ws.send(JSON.stringify({
 ---
 
 ## 版本历史
+
+- **v0.0.4** (2026-01-19): 出牌广播增加牌型字段
+  - 出牌广播消息中新增 `pattern` 字段，表示出牌玩家的牌型
+  - 支持的牌型包括：SINGLE、PAIR、TRIPLE、STRAIGHT、PAIR_STRAIGHT、TRIPLE_STRAIGHT、FULLHOUSE、BOMB、STRAIGHT_FLUSH、KING_BOMB、PASS
+  - 玩家和 Agent 出牌时均会在广播中包含牌型信息
 
 - **v0.0.3** (2026-01-18): 计分系统和游戏结束逻辑
   - 实现完整的计分系统（双下3分、单下2分、其他1分）

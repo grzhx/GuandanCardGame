@@ -309,7 +309,19 @@ public class GameWebSocketHandler implements WebSocketHandler {
         
         if (gameService.playCards(room, seat, cards)) {
             roomService.saveRoom(room);
-            broadcastToRoom(roomId, Map.of("seat", seat, "movement", cards));
+            
+            // 获取牌型信息
+            String patternType = "PASS";
+            if (room.getLastPattern() != null) {
+                patternType = room.getLastPattern().getType().name();
+            }
+            
+            // 广播时包含牌型
+            Map<String, Object> broadcast = new HashMap<>();
+            broadcast.put("seat", seat);
+            broadcast.put("movement", cards);
+            broadcast.put("pattern", patternType);
+            broadcastToRoom(roomId, broadcast);
             
             if (!wasFinished && room.getFinishedPlayers().contains(seat)) {
                 broadcastToRoom(roomId, Map.of(
@@ -394,7 +406,20 @@ public class GameWebSocketHandler implements WebSocketHandler {
             
             if (gameService.playCards(room, current, cards)) {
                 roomService.saveRoom(room);
-                broadcastToRoom(roomId, Map.of("seat", current, "movement", cards));
+                
+                // 获取牌型信息
+                String patternType = "PASS";
+                if (room.getLastPattern() != null) {
+                    patternType = room.getLastPattern().getType().name();
+                }
+                
+                // 广播时包含牌型
+                Map<String, Object> broadcast = new HashMap<>();
+                broadcast.put("seat", current);
+                broadcast.put("movement", cards);
+                broadcast.put("pattern", patternType);
+                broadcastToRoom(roomId, broadcast);
+                
                 notifyCurrentPlayer(roomId);
                 triggerAgentIfNeeded(roomId);
             }
