@@ -314,9 +314,116 @@
 
 ---
 
-### 3. 房间管理
+### 3.匹配系统
 
-#### 3.1 创建房间
+#### 3.1 进入匹配队列
+
+**客户端发送**:
+```json
+{
+  "action": "matchmaking",
+  "username": "player1"
+}
+```
+
+**参数说明**:
+- `username`: 玩家用户名
+
+**服务器响应**（进入队列成功）:
+```json
+{
+  "type": "matchmaking",
+  "status": "queued",
+  "position": 2
+}
+```
+
+**字段说明**:
+- `type`: 消息类型，固定为 "matchmaking"
+- `status`: 状态，"queued" 表示已进入队列
+- `position`: 当前队列中的位置
+
+**服务器响应**（匹配成功）:
+```json
+{
+  "type": "matchmaking",
+  "status": "matched",
+  "roomId": "ABC123"
+}
+```
+
+**字段说明**:
+- `status`: 状态，"matched" 表示匹配成功
+- `roomId`: 匹配到的房间ID
+
+**错误响应**:
+```json
+{
+  "error": "Already in a room"
+}
+```
+
+或
+
+```json
+{
+  "error": "Already in matchmaking queue"
+}
+```
+
+**匹配流程**:
+1. 玩家发送匹配请求进入队列
+2. 服务器返回排队确认消息
+3. 当队列中有4个玩家时，服务器自动创建匹配房间
+4. 服务器向4个玩家发送匹配成功消息
+5. 服务器广播房间信息
+6. 游戏自动开始（所有玩家默认已准备）
+
+**匹配房间特点**:
+- 房间类型为MULTIPLE（多局游戏）
+- 无房主（hostId 为 -1）
+- 默认等级为 2
+- 所有玩家自动设为准备状态
+- 匹配成功后立即开始游戏
+
+#### 3.2 取消匹配
+
+**客户端发送**:
+```json
+{
+  "action": "cancel_matchmaking",
+  "username": "player1"
+}
+```
+
+**参数说明**:
+- `username`: 玩家用户名
+
+**服务器响应**（取消成功）:
+```json
+{
+  "type": "matchmaking",
+  "status": "cancelled"
+}
+```
+
+**错误响应**:
+```json
+{
+  "error": "Not in matchmaking queue"
+}
+```
+
+**说明**:
+- 只有在匹配队列中的玩家才能取消匹配
+- 取消后玩家从队列中移除
+- 如果已经匹配成功并进入房间，则无法取消
+
+---
+
+### 4. 房间管理
+
+#### 4.1 创建房间
 
 **客户端发送**:
 ```json
@@ -897,6 +1004,13 @@ ws.send(JSON.stringify({
 ---
 
 ## 版本历史
+
+- **v0.0.5** (2026-01-19): 匹配系统
+  - 新增匹配功能，玩家可通过 `matchmaking` action 进入匹配队列
+  - 当队列中有4个玩家时，自动创建匹配房间并开始游戏
+  - 匹配房间无房主，所有玩家自动准备
+  - 支持取消匹配功能（`cancel_matchmaking` action）
+  - 匹配房间默认为多局游戏模式（MULTIPLE），等级为2
 
 - **v0.0.4** (2026-01-19): 出牌广播增加牌型字段
   - 出牌广播消息中新增 `pattern` 字段，表示出牌玩家的牌型

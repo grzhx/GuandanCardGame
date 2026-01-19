@@ -43,12 +43,26 @@ public class RoomService {
         return room;
     }
     
+    public GameRoom createMatchRoom(int level) {
+        String roomId = generateRoomId();
+        GameRoom room = new GameRoom();
+        room.setRoomId(roomId);
+        room.setGameType("MULTIPLE");
+        room.setLevel(level);
+        room.setHostId(-1L); // 匹配房间无房主
+        room.setStarted(false);
+        room.setFinished(false);
+        
+        saveRoom(room);
+        return room;
+    }
+    
     public GameRoom getRoom(String roomId) {
         return (GameRoom) redisTemplate.opsForValue().get("room:" + roomId);
     }
     
     public void saveRoom(GameRoom room) {
-        redisTemplate.opsForValue().set("room:" + room.getRoomId(), room, 10, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set("room:" + room.getRoomId(), room, 1, TimeUnit.MINUTES);
     }
     
     public void deleteRoom(String roomId) {

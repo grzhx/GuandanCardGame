@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 @Slf4j
 @Component
@@ -25,6 +26,21 @@ public class GameWebSocketHandler implements WebSocketHandler {
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, String> sessionToUsername = new ConcurrentHashMap<>();
     private final Map<String, String> usernameToRoom = new ConcurrentHashMap<>();
+    private final ConcurrentLinkedQueue<MatchPlayer> matchQueue = new ConcurrentLinkedQueue<>();
+    private final Set<String> matchingUsers = ConcurrentHashMap.newKeySet();
+    
+    // 匹配玩家信息
+    private static class MatchPlayer {
+        final WebSocketSession session;
+        final String username;
+        final Long userId;
+        
+        MatchPlayer(WebSocketSession session, String username, Long userId) {
+            this.session = session;
+            this.username = username;
+            this.userId = userId;
+        }
+    }
     
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -58,6 +74,10 @@ public class GameWebSocketHandler implements WebSocketHandler {
             handleGetHistory(session, msg);
         } else if ("play_cards".equals(action)) {
             handlePlayCards(session, msg);
+        } else if ("matchmaking".equals(action)) {
+            handleMatchmaking(session, msg);
+        } else if ("cancel_matchmaking".equals(action)) {
+            handleCancelMatchmaking(session, msg);
         } else if (msg.containsKey("roomId")) {
             handleRoomAction(session, msg);
         } else if (msg.containsKey("state")) {
@@ -178,6 +198,137 @@ public class GameWebSocketHandler implements WebSocketHandler {
         response.put("game_list", new ArrayList<>());
         
         sendMessage(session, response);
+    }
+    
+    private void handleMatchmaking(WebSocketSession session, Map<String, Object> msg) throws Exception {
+        String username = (String) msg.get("username");
+        
+        // 验证用户
+        var user = userService.findByUsername(username);
+        if (user == null) {
+            user = userService.register(username, "default");
+        }
+        
+        // 检查用户是否已在房间中
+        if (usernameToRoom.containsKey(username)) {
+            sendMessage(session, Map.of("error", "Already in a room"));
+            return;
+        }
+        
+        // 检查用户是否已在匹配队列中
+        if (matchingUsers.contains(username)) {
+            sendMessage(session, Map.of("error", "Already in matchmaking queue"));
+            return;
+        }
+        
+        // 加入匹配队列
+        MatchPlayer matchPlayer = new MatchPlayer(session, username, user.getId());
+        matchQueue.offer(matchPlayer);
+        matchingUsers.add(username);
+        
+        log.info("Player {} joined matchmaking queue, current queue size: {}", username, matchQueue.size());
+        
+        // 通知玩家进入队列
+        sendMessage(session, Map.of(
+            "type", "matchmaking",
+            "status", "queued",
+            "position", matchQueue.size()
+        ));
+        
+        // 检查是否有足够的玩家开始匹配
+        if (matchQueue.size() >= 4) {
+            createMatchRoom();
+        }
+    }
+    
+    private void handleCancelMatchmaking(WebSocketSession session, Map<String, Object> msg) throws Exception {
+        String username = (String) msg.get("username");
+        
+        if (!matchingUsers.contains(username)) {
+            sendMessage(session, Map.of("error", "Not in matchmaking queue"));
+            return;
+        }
+        
+        // 从队列中移除玩家
+        matchQueue.removeIf(mp -> mp.username.equals(username));
+        matchingUsers.remove(username);
+        
+        log.info("Player {} left matchmaking queue, current queue size: {}", username, matchQueue.size());
+        
+        sendMessage(session, Map.of(
+            "type", "matchmaking",
+            "status", "cancelled"
+        ));
+    }
+    
+    private synchronized void createMatchRoom() throws Exception {
+        if (matchQueue.size() < 4) {
+            return;
+        }
+        
+        // 取出4个玩家
+        List<MatchPlayer> players = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            MatchPlayer player = matchQueue.poll();
+            if (player != null) {
+                players.add(player);
+                matchingUsers.remove(player.username);
+            }
+        }
+        
+        if (players.size() != 4) {
+            // 如果没有足够的玩家，放回队列
+            for (MatchPlayer player : players) {
+                matchQueue.offer(player);
+                matchingUsers.add(player.username);
+            }
+            return;
+        }
+        
+        // 创建匹配房间
+        int level = 2; // 默认等级
+        GameRoom room = roomService.createMatchRoom(level);
+        String roomId = room.getRoomId();
+        
+        log.info("Created match room {} for players: {}", roomId, 
+            players.stream().map(p -> p.username).toArray());
+        
+        // 将4个玩家加入房间
+        for (int i = 0; i < 4; i++) {
+            MatchPlayer player = players.get(i);
+            roomService.addPlayer(roomId, player.userId, player.username);
+            sessionToUsername.put(player.session.getId(), player.username);
+            usernameToRoom.put(player.username, roomId);
+            
+            // 设置玩家为已准备状态
+            GameRoom updatedRoom = roomService.getRoom(roomId);
+            updatedRoom.getPlayers()[i].setReady(true);
+            roomService.saveRoom(updatedRoom);
+        }
+        
+        // 通知所有玩家匹配成功
+        for (MatchPlayer player : players) {
+            if (player.session.isOpen()) {
+                sendMessage(player.session, Map.of(
+                    "type", "matchmaking",
+                    "status", "matched",
+                    "roomId", roomId
+                ));
+            }
+        }
+        
+        // 广播房间信息
+        broadcastRoomInfo(roomId);
+        
+        // 自动开始游戏
+        GameRoom room2 = roomService.getRoom(roomId);
+        room2.setFirstPlayer(new Random().nextInt(4));
+        gameService.initGame(room2);
+        roomService.saveRoom(room2);
+        broadcastToRoom(roomId, Map.of("game_state", true));
+        broadcastToRoom(roomId, Map.of("seat", room2.getCurrentPlayer()));
+        notifyCurrentPlayer(roomId);
+        triggerAgentIfNeeded(roomId);
     }
     
     private void handleRoomAction(WebSocketSession session, Map<String, Object> msg) throws Exception {
