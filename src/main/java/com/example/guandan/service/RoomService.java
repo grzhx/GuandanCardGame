@@ -1,7 +1,6 @@
 package com.example.guandan.service;
 
 import com.example.guandan.model.GameRoom;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import java.util.Random;
@@ -12,9 +11,6 @@ public class RoomService {
     
     private final RedisTemplate<String, Object> redisTemplate;
     private final Random random = new Random();
-    
-    @Value("${game.auto-agent:false}")
-    private boolean autoAgent;
     
     public RoomService(RedisTemplate<String, Object> redisTemplate) {
         this.redisTemplate = redisTemplate;
@@ -76,22 +72,11 @@ public class RoomService {
         for (int i = 0; i < 4; i++) {
             if (room.getPlayers()[i] == null) {
                 room.getPlayers()[i] = new GameRoom.Player(userId, username, i);
-                if (autoAgent) {
-                    fillWithAgents(room, i + 1);
-                }
                 saveRoom(room);
                 return i;
             }
         }
         return -1;
-    }
-    
-    private void fillWithAgents(GameRoom room, int startSeat) {
-        for (int i = startSeat; i < 4; i++) {
-            if (room.getPlayers()[i] == null) {
-                room.getPlayers()[i] = GameRoom.Player.createAgent(i);
-            }
-        }
     }
     
     public boolean isRoomFull(String roomId) {

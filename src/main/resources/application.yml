@@ -22,5 +22,7 @@ mybatis:
 server:
   port: 8080
 
-game:
-  auto-agent: false
+agent:
+  server:
+    url: ws://192.168.1.4:8000/ws
+    timeout: 5000

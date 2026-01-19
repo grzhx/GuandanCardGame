@@ -7,6 +7,7 @@ import com.example.guandan.service.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import java.util.*;
@@ -21,7 +22,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
     private final RoomService roomService;
     private final GameService gameService;
     private final UserService userService;
-    private final AgentService agentService;
+    private final AgentWebSocketClient agentWebSocketClient;
+    private final TaskExecutor taskExecutor;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, String> sessionToUsername = new ConcurrentHashMap<>();
@@ -351,6 +353,44 @@ public class GameWebSocketHandler implements WebSocketHandler {
             
             sendMessage(session, Map.of("token", room.getRoomId()));
         } else {
+            // AGENT 房间：创建AI对战房间
+            if ("AGENT".equals(roomId)) {
+                GameRoom room = new GameRoom();
+                room.setRoomId("AGENT");
+                room.setGameType("SINGLE");
+                room.setLevel(2);
+                room.setHostId(user.getId());
+                
+                // 玩家占据seat 0
+                room.getPlayers()[0] = new GameRoom.Player(user.getId(), username, 0);
+                room.getPlayers()[0].setReady(true);
+                
+                // 创建3个AI玩家
+                for (int i = 1; i < 4; i++) {
+                    room.getPlayers()[i] = GameRoom.Player.createAgent(i);
+                }
+                
+                roomService.saveRoom(room);
+                sessionToUsername.put(session.getId(), username);
+                usernameToRoom.put(username, "AGENT");
+                
+                log.info("Created AGENT room for player {}", username);
+                
+                // 广播房间信息
+                broadcastRoomInfo("AGENT");
+                
+                // 自动开始游戏
+                room.setFirstPlayer(new Random().nextInt(4));
+                gameService.initGame(room);
+                roomService.saveRoom(room);
+                broadcastToRoom("AGENT", Map.of("game_state", true));
+                broadcastToRoom("AGENT", Map.of("seat", room.getCurrentPlayer()));
+                notifyCurrentPlayer("AGENT");
+                triggerAgentIfNeeded("AGENT");
+                
+                return;
+            }
+            
             // TEST 房间：创建单人测试房间
             if ("TEST".equals(roomId)) {
                 GameRoom room = new GameRoom();
@@ -544,7 +584,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
         }
     }
     
-    private void triggerAgentIfNeeded(String roomId) throws Exception {
+    private void triggerAgentIfNeeded(String roomId) {
         GameRoom room = roomService.getRoom(roomId);
         if (room == null || room.isFinished()) return;
         
@@ -552,28 +592,76 @@ public class GameWebSocketHandler implements WebSocketHandler {
         GameRoom.Player player = room.getPlayers()[current];
         
         if (player != null && player.isAgent()) {
-            List<Card> cards = agentService.decidePlay(room, current);
-            log.info("Agent {} plays: {}", current, cards);
+            log.info("Agent {} will play in 3 seconds", current);
             
-            if (gameService.playCards(room, current, cards)) {
-                roomService.saveRoom(room);
-                
-                // 获取牌型信息
-                String patternType = "PASS";
-                if (room.getLastPattern() != null) {
-                    patternType = room.getLastPattern().getType().name();
+            // 延迟3秒后请求agent服务器
+            taskExecutor.execute(() -> {
+                try {
+                    Thread.sleep(3000);
+                    log.info("Requesting agent {} to play", current);
+                    
+                    // 重新获取最新的room状态
+                    GameRoom delayedRoom = roomService.getRoom(roomId);
+                    if (delayedRoom == null || delayedRoom.isFinished()) return;
+                    
+                    // 异步请求agent服务器
+                    agentWebSocketClient.requestAgentPlay(delayedRoom, current).thenAccept(cards -> {
+                        // 使用TaskExecutor确保在Spring管理的线程中执行，避免类加载器问题
+                        taskExecutor.execute(() -> {
+                            try {
+                                log.info("Agent {} plays: {}", current, cards);
+                                
+                                // 重新获取最新的room状态
+                                GameRoom updatedRoom = roomService.getRoom(roomId);
+                                if (updatedRoom == null || updatedRoom.isFinished()) return;
+                                
+                                if (gameService.playCards(updatedRoom, current, cards)) {
+                                    roomService.saveRoom(updatedRoom);
+                                    
+                                    // 获取牌型信息
+                                    String patternType = "PASS";
+                                    if (updatedRoom.getLastPattern() != null) {
+                                        patternType = updatedRoom.getLastPattern().getType().name();
+                                    }
+                                    
+                                    // 广播时包含牌型
+                                    Map<String, Object> broadcast = new HashMap<>();
+                                    broadcast.put("seat", current);
+                                    broadcast.put("movement", cards);
+                                    broadcast.put("pattern", patternType);
+                                    broadcastToRoom(roomId, broadcast);
+                                    
+                                    // 检查是否有玩家打完牌
+                                    if (updatedRoom.getFinishedPlayers().contains(current)) {
+                                        broadcastToRoom(roomId, Map.of(
+                                            "msg", "someone clear his hand",
+                                            "seat", current,
+                                            "username", player.getUsername()
+                                        ));
+                                    }
+                                    
+                                    // 检查游戏是否结束
+                                    if (updatedRoom.isFinished()) {
+                                        broadcastRoundEnd(roomId);
+                                        if (updatedRoom.isGameOver()) {
+                                            broadcastGameOver(roomId);
+                                            return;
+                                        }
+                                    }
+                                    
+                                    notifyCurrentPlayer(roomId);
+                                    triggerAgentIfNeeded(roomId);
+                                }
+                            } catch (Exception e) {
+                                log.error("Error processing agent play", e);
+                            }
+                        });
+                    });
+                } catch (InterruptedException e) {
+                    log.error("Agent delay interrupted", e);
+                    Thread.currentThread().interrupt();
                 }
-                
-                // 广播时包含牌型
-                Map<String, Object> broadcast = new HashMap<>();
-                broadcast.put("seat", current);
-                broadcast.put("movement", cards);
-                broadcast.put("pattern", patternType);
-                broadcastToRoom(roomId, broadcast);
-                
-                notifyCurrentPlayer(roomId);
-                triggerAgentIfNeeded(roomId);
-            }
+            });
         }
     }
     
