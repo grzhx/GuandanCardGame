@@ -63,6 +63,13 @@ public class GameWebSocketHandler implements WebSocketHandler {
         }
         
         String action = (String) msg.get("action");
+        String msgType = (String) msg.get("msg");
+        
+        // 处理快捷聊天消息
+        if ("quick_chat".equals(msgType)) {
+            handleQuickChat(session, msg);
+            return;
+        }
         
         if ("get_data".equals(action)) {
             handleGetData(session, msg);
@@ -80,6 +87,10 @@ public class GameWebSocketHandler implements WebSocketHandler {
             handleMatchmaking(session, msg);
         } else if ("cancel_matchmaking".equals(action)) {
             handleCancelMatchmaking(session, msg);
+        } else if ("add_agent".equals(action)) {
+            handleAddAgent(session, msg);
+        } else if ("remove_agent".equals(action)) {
+            handleRemoveAgent(session, msg);
         } else if (msg.containsKey("roomId")) {
             handleRoomAction(session, msg);
         } else if (msg.containsKey("state")) {
@@ -181,6 +192,159 @@ public class GameWebSocketHandler implements WebSocketHandler {
         String gameKey = "game" + room.getCurrentGameIndex();
         List<Map<String, Object>> history = room.getGameHistory().getOrDefault(gameKey, new ArrayList<>());
         sendMessage(session, Map.of(gameKey, history));
+    }
+    
+    private void handleQuickChat(WebSocketSession session, Map<String, Object> msg) throws Exception {
+        String username = sessionToUsername.get(session.getId());
+        if (username == null) {
+            log.warn("quick_chat: session {} has no username", session.getId());
+            sendMessage(session, Map.of("error", "Username not found"));
+            return;
+        }
+        
+        String roomId = usernameToRoom.get(username);
+        if (roomId == null) {
+            log.warn("quick_chat: username {} not in any room", username);
+            sendMessage(session, Map.of("error", "Not in a room"));
+            return;
+        }
+        
+        // 广播快捷聊天消息给房间所有人
+        Map<String, Object> chatMsg = new HashMap<>();
+        chatMsg.put("msg", "quick_chat");
+        chatMsg.put("seat", msg.get("seat"));
+        chatMsg.put("text", msg.get("text"));
+        broadcastToRoom(roomId, chatMsg);
+    }
+    
+    private void handleAddAgent(WebSocketSession session, Map<String, Object> msg) throws Exception {
+        String username = (String) msg.get("username");
+        
+        // 获取用户信息
+        var user = userService.findByUsername(username);
+        if (user == null) {
+            sendMessage(session, Map.of("error", "User not found"));
+            return;
+        }
+        
+        // 检查用户是否在房间中
+        String roomId = usernameToRoom.get(username);
+        if (roomId == null) {
+            sendMessage(session, Map.of("error", "Not in a room"));
+            return;
+        }
+        
+        GameRoom room = roomService.getRoom(roomId);
+        if (room == null) {
+            sendMessage(session, Map.of("error", "Room not found"));
+            return;
+        }
+        
+        // 检查是否是匹配房间（hostId == -1L）
+        if (room.getHostId() != null && room.getHostId() == -1L) {
+            sendMessage(session, Map.of("error", "Cannot add agent in match room"));
+            return;
+        }
+        
+        // 检查是否是房主
+        if (room.getHostId() == null || !room.getHostId().equals(user.getId())) {
+            sendMessage(session, Map.of("error", "Only host can add agent"));
+            return;
+        }
+        
+        // 查找空位
+        int emptySeat = -1;
+        for (int i = 0; i < 4; i++) {
+            if (room.getPlayers()[i] == null) {
+                emptySeat = i;
+                break;
+            }
+        }
+        
+        if (emptySeat == -1) {
+            sendMessage(session, Map.of("error", "Room is full"));
+            return;
+        }
+        
+        // 创建 agent 并自动设置为 ready
+        room.getPlayers()[emptySeat] = GameRoom.Player.createAgent(emptySeat);
+        roomService.saveRoom(room);
+        
+        log.info("Added agent to room {} at seat {}", roomId, emptySeat);
+        
+        // 广播房间信息
+        broadcastRoomInfo(roomId);
+        
+        // 如果所有玩家都准备好了，自动开始游戏
+        if (roomService.allPlayersReady(roomId) && !room.isStarted()) {
+            room = roomService.getRoom(roomId);
+            room.setFirstPlayer(new Random().nextInt(4));
+            gameService.initGame(room);
+            roomService.saveRoom(room);
+            broadcastToRoom(roomId, Map.of("game_state", true));
+            broadcastToRoom(roomId, Map.of("seat", room.getCurrentPlayer()));
+            notifyCurrentPlayer(roomId);
+            triggerAgentIfNeeded(roomId);
+        }
+    }
+    
+    private void handleRemoveAgent(WebSocketSession session, Map<String, Object> msg) throws Exception {
+        String username = (String) msg.get("username");
+        
+        // 获取用户信息
+        var user = userService.findByUsername(username);
+        if (user == null) {
+            sendMessage(session, Map.of("error", "User not found"));
+            return;
+        }
+        
+        // 检查用户是否在房间中
+        String roomId = usernameToRoom.get(username);
+        if (roomId == null) {
+            sendMessage(session, Map.of("error", "Not in a room"));
+            return;
+        }
+        
+        GameRoom room = roomService.getRoom(roomId);
+        if (room == null) {
+            sendMessage(session, Map.of("error", "Room not found"));
+            return;
+        }
+        
+        // 检查是否是匹配房间（hostId == -1L）
+        if (room.getHostId() != null && room.getHostId() == -1L) {
+            sendMessage(session, Map.of("error", "Cannot remove agent in match room"));
+            return;
+        }
+        
+        // 检查是否是房主
+        if (room.getHostId() == null || !room.getHostId().equals(user.getId())) {
+            sendMessage(session, Map.of("error", "Only host can remove agent"));
+            return;
+        }
+        
+        // 查找第一个 agent
+        int agentSeat = -1;
+        for (int i = 0; i < 4; i++) {
+            if (room.getPlayers()[i] != null && room.getPlayers()[i].isAgent()) {
+                agentSeat = i;
+                break;
+            }
+        }
+        
+        if (agentSeat == -1) {
+            sendMessage(session, Map.of("error", "No agent in room"));
+            return;
+        }
+        
+        // 移除 agent
+        room.getPlayers()[agentSeat] = null;
+        roomService.saveRoom(room);
+        
+        log.info("Removed agent from room {} at seat {}", roomId, agentSeat);
+        
+        // 广播房间信息
+        broadcastRoomInfo(roomId);
     }
     
     private void handleGetData(WebSocketSession session, Map<String, Object> msg) throws Exception {
@@ -514,6 +678,16 @@ public class GameWebSocketHandler implements WebSocketHandler {
             broadcast.put("pattern", patternType);
             broadcastToRoom(roomId, broadcast);
             
+            // 检查手牌数量并广播
+            int remainingCards = room.getPlayers()[seat].getHand().size();
+            if (remainingCards < 10) {
+                Map<String, Object> warningMsg = new HashMap<>();
+                warningMsg.put("msg", "hand cards warning");
+                warningMsg.put("seat", seat);
+                warningMsg.put("cards_num", remainingCards);
+                broadcastToRoom(roomId, warningMsg);
+            }
+            
             if (!wasFinished && room.getFinishedPlayers().contains(seat)) {
                 broadcastToRoom(roomId, Map.of(
                     "msg", "someone clear his hand",
@@ -630,6 +804,16 @@ public class GameWebSocketHandler implements WebSocketHandler {
                                     broadcast.put("movement", cards);
                                     broadcast.put("pattern", patternType);
                                     broadcastToRoom(roomId, broadcast);
+                                    
+                                    // 检查手牌数量并广播
+                                    int remainingCards = updatedRoom.getPlayers()[current].getHand().size();
+                                    if (remainingCards < 10) {
+                                        Map<String, Object> warningMsg = new HashMap<>();
+                                        warningMsg.put("msg", "hand cards warning");
+                                        warningMsg.put("seat", current);
+                                        warningMsg.put("cards_num", remainingCards);
+                                        broadcastToRoom(roomId, warningMsg);
+                                    }
                                     
                                     // 检查是否有玩家打完牌
                                     if (updatedRoom.getFinishedPlayers().contains(current)) {
