@@ -43,7 +43,7 @@ public class GameRoom {
             this.userId = userId;
             this.username = username;
             this.seat = seat;
-            this.ready = true;
+            this.ready = false;
             this.online = true;
             this.score = 0;
             this.agent = false;

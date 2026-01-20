@@ -283,6 +283,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
             roomService.saveRoom(room);
             broadcastToRoom(roomId, Map.of("game_state", true));
             broadcastToRoom(roomId, Map.of("seat", room.getCurrentPlayer()));
+            broadcastToRoom(roomId, Map.of("level", room.getLevel()));
             notifyCurrentPlayer(roomId);
             triggerAgentIfNeeded(roomId);
         }
@@ -465,10 +466,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
             roomService.addPlayer(roomId, player.userId, player.username);
             sessionToUsername.put(player.session.getId(), player.username);
             usernameToRoom.put(player.username, roomId);
-            
-            // 设置玩家为已准备状态
+
             GameRoom updatedRoom = roomService.getRoom(roomId);
-            updatedRoom.getPlayers()[i].setReady(true);
             roomService.saveRoom(updatedRoom);
         }
         
@@ -485,16 +484,19 @@ public class GameWebSocketHandler implements WebSocketHandler {
         
         // 广播房间信息
         broadcastRoomInfo(roomId);
-        
-        // 自动开始游戏
-        GameRoom room2 = roomService.getRoom(roomId);
-        room2.setFirstPlayer(new Random().nextInt(4));
-        gameService.initGame(room2);
-        roomService.saveRoom(room2);
-        broadcastToRoom(roomId, Map.of("game_state", true));
-        broadcastToRoom(roomId, Map.of("seat", room2.getCurrentPlayer()));
-        notifyCurrentPlayer(roomId);
-        triggerAgentIfNeeded(roomId);
+
+        //所有人准备好了开始游戏
+        if (roomService.allPlayersReady(roomId) && !room.isStarted()) {
+            room = roomService.getRoom(roomId);
+            room.setFirstPlayer(new Random().nextInt(4));
+            gameService.initGame(room);
+            roomService.saveRoom(room);
+            broadcastToRoom(roomId, Map.of("game_state", true));
+            broadcastToRoom(roomId, Map.of("seat", room.getCurrentPlayer()));
+            broadcastToRoom(roomId, Map.of("level", room.getLevel()));
+            notifyCurrentPlayer(roomId);
+            triggerAgentIfNeeded(roomId);
+        }
     }
     
     private void handleRoomAction(WebSocketSession session, Map<String, Object> msg) throws Exception {
@@ -516,6 +518,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
             usernameToRoom.put(username, room.getRoomId());
             
             sendMessage(session, Map.of("token", room.getRoomId()));
+            broadcastRoomInfo(room.getRoomId());
         } else {
             // AGENT 房间：创建AI对战房间
             if ("AGENT".equals(roomId)) {
@@ -549,6 +552,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
                 roomService.saveRoom(room);
                 broadcastToRoom("AGENT", Map.of("game_state", true));
                 broadcastToRoom("AGENT", Map.of("seat", room.getCurrentPlayer()));
+                broadcastToRoom("AGENT", Map.of("level", room.getLevel()));
                 notifyCurrentPlayer("AGENT");
                 triggerAgentIfNeeded("AGENT");
                 
@@ -607,6 +611,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
                 gameService.initGame(room);
                 roomService.saveRoom(room);
                 broadcastToRoom(roomId, Map.of("game_state", true));
+                broadcastToRoom(roomId, Map.of("seat", room.getCurrentPlayer()));
+                broadcastToRoom(roomId, Map.of("level", room.getLevel()));
             }
         }
     }
@@ -624,6 +630,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
         int seat = findPlayerSeat(room, username);
         if (seat >= 0) {
             room.getPlayers()[seat].setReady(ready);
+            broadcastToRoom(roomId, Map.of("seat", seat));
         }
         
         roomService.saveRoom(room);
@@ -636,6 +643,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
             roomService.saveRoom(room);
             broadcastToRoom(roomId, Map.of("game_state", true));
             broadcastToRoom(roomId, Map.of("seat", room.getCurrentPlayer()));
+            broadcastToRoom(roomId, Map.of("level", room.getLevel()));
             notifyCurrentPlayer(roomId);
             triggerAgentIfNeeded(roomId);
         }
