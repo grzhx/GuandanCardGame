@@ -21,13 +21,18 @@ public class GameService {
         room.setCurrentPlayer(room.getFirstPlayer());
         room.setStarted(true);
         room.setFinished(false);
+        room.setPaused(false);
         room.setLastPattern(null);
+        room.setLastPlayerId(-1);
         room.setFinishedPlayers(new ArrayList<>());
         room.getCurrentRoundCards().clear();
         room.setPassCount(0);
+        room.setTributeState(null);
         
         String gameKey = "game" + room.getCurrentGameIndex();
         room.getGameHistory().put(gameKey, new ArrayList<>());
+        
+        processTribute(room);
     }
     
     private List<Card> createDeck() {
@@ -342,8 +347,16 @@ public class GameService {
     private void finishGame(GameRoom room) {
         room.setFinished(true);
         
-        for (int i = 0; i < room.getFinishedPlayers().size(); i++) {
-            room.getRanks()[room.getFinishedPlayers().get(i)] = i + 1;
+        List<Integer> order = new ArrayList<>(new LinkedHashSet<>(room.getFinishedPlayers()));
+        for (int i = 0; i < 4; i++) {
+            if (!order.contains(i)) {
+                order.add(i);
+            }
+        }
+        room.setFinishedPlayers(order);
+        
+        for (int i = 0; i < order.size(); i++) {
+            room.getRanks()[order.get(i)] = i + 1;
         }
         
         int team0Rank = Math.min(room.getRanks()[0], room.getRanks()[2]);
@@ -390,7 +403,6 @@ public class GameService {
     
     private int calculateUpgrade(GameRoom room, int w1, int w2) {
         int[] ranks = room.getRanks();
-        
         if ((ranks[w1] == 1 && ranks[w2] == 2) || (ranks[w1] == 2 && ranks[w2] == 1)) {
             return 3;
         } else if ((ranks[w1] == 1 && ranks[w2] == 3) || (ranks[w1] == 3 && ranks[w2] == 1)) {
@@ -398,5 +410,182 @@ public class GameService {
         } else {
             return 1;
         }
+    }
+
+    // 结算上一局后处理进贡/还贡、首家确定
+    private void processTribute(GameRoom room) {
+        GameRoom.TributeState state = new GameRoom.TributeState();
+        room.setTributeState(state);
+        
+        if (!hasValidRanks(room.getRanks())) {
+            state.setRequired(false);
+            state.setCompleted(true);
+            state.setAntiTribute(false);
+            room.setCurrentPlayer(room.getFirstPlayer());
+            return;
+        }
+
+        int upSeat = getSeatByRank(room, 1);
+        int secondSeat = getSeatByRank(room, 2);
+        int thirdSeat = getSeatByRank(room, 3);
+        int downSeat = getSeatByRank(room, 4);
+
+        int team0Rank = Math.min(room.getRanks()[0], room.getRanks()[2]);
+        int team1Rank = Math.min(room.getRanks()[1], room.getRanks()[3]);
+        int winnerTeam = team0Rank < team1Rank ? 0 : 1;
+        Set<Integer> losingSeats = winnerTeam == 0 ? Set.of(1, 3) : Set.of(0, 2);
+
+        int payerFourth = losingSeats.contains(downSeat) ? downSeat : -1;
+        int payerThird = losingSeats.contains(thirdSeat) ? thirdSeat : -1;
+        boolean doubleTribute = payerThird != -1 && payerFourth != -1;
+
+        if (payerFourth == -1) {
+            state.setRequired(false);
+            state.setCompleted(true);
+            state.setAntiTribute(false);
+            room.setCurrentPlayer(room.getFirstPlayer());
+            return;
+        }
+
+        List<Integer> payers = doubleTribute ? List.of(payerThird, payerFourth) : List.of(payerFourth);
+        if (hasEnoughBigJokers(room, payers)) {
+            state.setRequired(true);
+            state.setCompleted(true);
+            state.setAntiTribute(true);
+            room.setCurrentPlayer(upSeat);
+            room.setFirstPlayer(upSeat);
+            return;
+        }
+
+        state.setRequired(true);
+        state.setAntiTribute(false);
+
+        if (!doubleTribute) {
+            Card tributeCard = selectTributeCard(room.getPlayers()[payerFourth].getHand(), room.getLevel());
+            moveCard(room.getPlayers()[payerFourth].getHand(), room.getPlayers()[upSeat].getHand(), tributeCard);
+
+            Card returnCard = selectReturnCard(room.getPlayers()[upSeat].getHand(), room.getLevel());
+            moveCard(room.getPlayers()[upSeat].getHand(), room.getPlayers()[payerFourth].getHand(), returnCard);
+
+            state.getTributeCards().put(payerFourth, tributeCard);
+            state.getReturnCards().put(payerFourth, returnCard);
+            state.setCompleted(true);
+            room.setCurrentPlayer(payerFourth);
+            room.setFirstPlayer(payerFourth);
+            return;
+        }
+
+        Card tributeThird = selectTributeCard(room.getPlayers()[payerThird].getHand(), room.getLevel());
+        Card tributeFourth = selectTributeCard(room.getPlayers()[payerFourth].getHand(), room.getLevel());
+        int compare = compareCards(tributeThird, tributeFourth, room.getLevel());
+
+        int payerForUp;
+        int payerForSecond;
+        Card cardForUp;
+        Card cardForSecond;
+
+        if (compare > 0) {
+            payerForUp = payerThird;
+            payerForSecond = payerFourth;
+            cardForUp = tributeThird;
+            cardForSecond = tributeFourth;
+        } else if (compare < 0) {
+            payerForUp = payerFourth;
+            payerForSecond = payerThird;
+            cardForUp = tributeFourth;
+            cardForSecond = tributeThird;
+        } else {
+            boolean thirdCloser = clockwiseDistance(upSeat, payerThird) < clockwiseDistance(upSeat, payerFourth);
+            payerForUp = thirdCloser ? payerThird : payerFourth;
+            payerForSecond = thirdCloser ? payerFourth : payerThird;
+            cardForUp = payerForUp == payerThird ? tributeThird : tributeFourth;
+            cardForSecond = payerForUp == payerThird ? tributeFourth : tributeThird;
+        }
+
+        moveCard(room.getPlayers()[payerForUp].getHand(), room.getPlayers()[upSeat].getHand(), cardForUp);
+        moveCard(room.getPlayers()[payerForSecond].getHand(), room.getPlayers()[secondSeat].getHand(), cardForSecond);
+
+        Card returnToPayerUp = selectReturnCard(room.getPlayers()[upSeat].getHand(), room.getLevel());
+        Card returnToPayerSecond = selectReturnCard(room.getPlayers()[secondSeat].getHand(), room.getLevel());
+        moveCard(room.getPlayers()[upSeat].getHand(), room.getPlayers()[payerForUp].getHand(), returnToPayerUp);
+        moveCard(room.getPlayers()[secondSeat].getHand(), room.getPlayers()[payerForSecond].getHand(), returnToPayerSecond);
+
+        state.getTributeCards().put(payerForUp, cardForUp);
+        state.getTributeCards().put(payerForSecond, cardForSecond);
+        state.getReturnCards().put(payerForUp, returnToPayerUp);
+        state.getReturnCards().put(payerForSecond, returnToPayerSecond);
+        state.setCompleted(true);
+
+        room.setCurrentPlayer(payerForUp);
+        room.setFirstPlayer(payerForUp);
+    }
+
+    private boolean hasValidRanks(int[] ranks) {
+        boolean[] seen = new boolean[5];
+        for (int rank : ranks) {
+            if (rank < 1 || rank > 4 || seen[rank]) {
+                return false;
+            }
+            seen[rank] = true;
+        }
+        return true;
+    }
+
+    private int getSeatByRank(GameRoom room, int rank) {
+        for (int i = 0; i < room.getRanks().length; i++) {
+            if (room.getRanks()[i] == rank) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private boolean hasEnoughBigJokers(GameRoom room, List<Integer> seats) {
+        int count = 0;
+        for (int seat : seats) {
+            List<Card> hand = room.getPlayers()[seat].getHand();
+            for (Card card : hand) {
+                if (card.getNumber() == 16) {
+                    count++;
+                }
+            }
+        }
+        return count >= 2;
+    }
+
+    private Card selectTributeCard(List<Card> hand, int level) {
+        return hand.stream()
+            .filter(c -> !c.isRedHeartLevelCard(level))
+            .max(Comparator.comparingInt(c -> c.getRank(level)))
+            .orElseGet(() -> hand.stream()
+                .max(Comparator.comparingInt(c -> c.getRank(level)))
+                .orElse(null));
+    }
+
+    private Card selectReturnCard(List<Card> hand, int level) {
+        Comparator<Card> cmp = Comparator.comparingInt((Card c) -> c.getRank(level))
+            .thenComparing(Card::getColor, Comparator.nullsFirst(String::compareTo));
+        return hand.stream()
+            .filter(c -> c.getNumber() <= 10)
+            .min(cmp)
+            .orElseGet(() -> hand.stream().min(cmp).orElse(null));
+    }
+
+    private int compareCards(Card a, Card b, int level) {
+        return Integer.compare(a.getRank(level), b.getRank(level));
+    }
+
+    private int clockwiseDistance(int from, int to) {
+        int dist = to - from;
+        if (dist < 0) {
+            dist += 4;
+        }
+        return dist;
+    }
+
+    private void moveCard(List<Card> from, List<Card> to, Card card) {
+        if (card == null) return;
+        from.remove(card);
+        to.add(card);
     }
 }

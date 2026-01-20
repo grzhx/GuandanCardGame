@@ -107,6 +107,7 @@ public class GameController {
         response.put("started", room.isStarted());
         response.put("player_comp", formatPlayerComp(room));
         response.put("finished_players", room.getFinishedPlayers());
+        response.put("tribute_state", room.getTributeState());
         response.put("finished", false);
         response.put("paused", false);
         

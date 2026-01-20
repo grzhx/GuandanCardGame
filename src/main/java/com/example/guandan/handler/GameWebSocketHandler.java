@@ -284,6 +284,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
             broadcastToRoom(roomId, Map.of("game_state", true));
             broadcastToRoom(roomId, Map.of("seat", room.getCurrentPlayer()));
             broadcastToRoom(roomId, Map.of("level", room.getLevel()));
+            broadcastTributeState(roomId);
+            broadcastRoundStart(roomId);
             notifyCurrentPlayer(roomId);
             triggerAgentIfNeeded(roomId);
         }
@@ -494,6 +496,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
             broadcastToRoom(roomId, Map.of("game_state", true));
             broadcastToRoom(roomId, Map.of("seat", room.getCurrentPlayer()));
             broadcastToRoom(roomId, Map.of("level", room.getLevel()));
+            broadcastTributeState(roomId);
             notifyCurrentPlayer(roomId);
             triggerAgentIfNeeded(roomId);
         }
@@ -553,6 +556,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
                 broadcastToRoom("AGENT", Map.of("game_state", true));
                 broadcastToRoom("AGENT", Map.of("seat", room.getCurrentPlayer()));
                 broadcastToRoom("AGENT", Map.of("level", room.getLevel()));
+                broadcastTributeState("AGENT");
+                broadcastRoundStart("AGENT");
                 notifyCurrentPlayer("AGENT");
                 triggerAgentIfNeeded("AGENT");
                 
@@ -581,6 +586,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
                 roomService.saveRoom(room);
                 broadcastToRoom("TEST", Map.of("game_state", true));
                 broadcastToRoom("TEST", Map.of("seat", room.getCurrentPlayer()));
+                broadcastTributeState("TEST");
+                broadcastRoundStart("TEST");
                 notifyCurrentPlayer("TEST");
                     } catch (Exception e) {
                         log.error("TEST room start error", e);
@@ -613,6 +620,10 @@ public class GameWebSocketHandler implements WebSocketHandler {
                 broadcastToRoom(roomId, Map.of("game_state", true));
                 broadcastToRoom(roomId, Map.of("seat", room.getCurrentPlayer()));
                 broadcastToRoom(roomId, Map.of("level", room.getLevel()));
+                broadcastTributeState(roomId);
+                broadcastRoundStart(roomId);
+                notifyCurrentPlayer(roomId);
+                triggerAgentIfNeeded(roomId);
             }
         }
     }
@@ -644,6 +655,8 @@ public class GameWebSocketHandler implements WebSocketHandler {
             broadcastToRoom(roomId, Map.of("game_state", true));
             broadcastToRoom(roomId, Map.of("seat", room.getCurrentPlayer()));
             broadcastToRoom(roomId, Map.of("level", room.getLevel()));
+            broadcastTributeState(roomId);
+            broadcastRoundStart(roomId);
             notifyCurrentPlayer(roomId);
             triggerAgentIfNeeded(roomId);
         }
@@ -855,6 +868,37 @@ public class GameWebSocketHandler implements WebSocketHandler {
                 }
             });
         }
+    }
+    
+    private void broadcastTributeState(String roomId) throws Exception {
+        GameRoom room = roomService.getRoom(roomId);
+        if (room == null) return;
+        GameRoom.TributeState tributeState = room.getTributeState();
+        if (tributeState == null) return;
+        if (!tributeState.isRequired() && !tributeState.isAntiTribute()) return;
+        
+        // 进贡/还贡结果广播：含贡牌、还牌、是否抗贡以及首家
+        Map<String, Object> message = new HashMap<>();
+        message.put("type", "tribute");
+        message.put("required", tributeState.isRequired());
+        message.put("completed", tributeState.isCompleted());
+        message.put("anti_tribute", tributeState.isAntiTribute());
+        message.put("tribute_cards", tributeState.getTributeCards());
+        message.put("return_cards", tributeState.getReturnCards());
+        message.put("seat", room.getCurrentPlayer());
+        
+        broadcastToRoom(roomId, message);
+    }
+    
+    private void broadcastRoundStart(String roomId) throws Exception {
+        GameRoom room = roomService.getRoom(roomId);
+        if (room == null) return;
+        // 新一回合开局，告知首家
+        Map<String, Object> message = new HashMap<>();
+        message.put("type", "round_start");
+        message.put("seat", room.getCurrentPlayer());
+        message.put("level", room.getLevel());
+        broadcastToRoom(roomId, message);
     }
     
     private void broadcastRoundEnd(String roomId) throws Exception {
