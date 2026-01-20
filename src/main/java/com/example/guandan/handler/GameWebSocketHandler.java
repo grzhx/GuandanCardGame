@@ -91,7 +91,9 @@ public class GameWebSocketHandler implements WebSocketHandler {
             handleAddAgent(session, msg);
         } else if ("remove_agent".equals(action)) {
             handleRemoveAgent(session, msg);
-        } else if (msg.containsKey("roomId")) {
+        } else if("choose bgp".equals(action)){
+            handleBgp(session,msg);
+        } else if(msg.containsKey("roomId")) {
             handleRoomAction(session, msg);
         } else if (msg.containsKey("state")) {
             handleReadyState(session, msg);
@@ -611,7 +613,7 @@ public class GameWebSocketHandler implements WebSocketHandler {
             sessionToUsername.put(session.getId(), username);
             usernameToRoom.put(username, roomId);
             broadcastRoomInfo(roomId);
-            
+
             if (roomService.allPlayersReady(roomId)) {
                 room = roomService.getRoom(roomId);
                 room.setFirstPlayer(new Random().nextInt(4));
@@ -747,7 +749,20 @@ public class GameWebSocketHandler implements WebSocketHandler {
             sendMessage(session, Map.of("error", "Invalid play"));
         }
     }
-    
+    private void handleBgp(WebSocketSession session, Map<String, Object> msg) throws Exception {
+        String username = sessionToUsername.get(session.getId());
+        if (username == null) return;
+        String roomId = usernameToRoom.get(username);
+        if (roomId == null) return;
+        GameRoom room = roomService.getRoom(roomId);
+        int bgp = (int) msg.get("number");
+        for (int i = 0; i < 4; i++) {
+            if (room.getPlayers()[i] != null && username.equals(room.getPlayers()[i].getUsername())) {
+                room.getPlayers()[i].setBgp(bgp);
+                return;
+            }
+        }
+    }
     private int findPlayerSeat(GameRoom room, String username) {
         if (room == null || username == null) return -1;
         for (int i = 0; i < 4; i++) {
@@ -949,11 +964,13 @@ public class GameWebSocketHandler implements WebSocketHandler {
                 playerInfo.put("username", room.getPlayers()[i].getUsername());
                 playerInfo.put("ready", room.getPlayers()[i].isReady());
                 playerInfo.put("online", room.getPlayers()[i].isOnline());
+                playerInfo.put("bgp", room.getPlayers()[i].getBgp());
             } else {
                 playerInfo.put("uid", 0);
                 playerInfo.put("username", null);
                 playerInfo.put("ready", false);
                 playerInfo.put("online", false);
+                playerInfo.put("bgp", 1);
             }
             players.add(playerInfo);
         }
